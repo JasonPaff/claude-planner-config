@@ -195,8 +195,8 @@ stages:
                     PLAN_INPUT="$WORK_ITEM_TITLE - Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
                   fi
                   
-                  # Run plan-feature command (30 min timeout - planning takes time)
-                  timeout 1800 claude --dangerously-skip-permissions \
+                  # Run plan-feature command (15 min timeout - planning takes time)
+                  timeout 900 claude --dangerously-skip-permissions \
                     "/plan-feature \"$PLAN_INPUT\"" \
                     --output-format json \
                     > $(Agent.TempDirectory)/claude-output.json 2>&1
