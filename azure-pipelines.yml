@@ -159,8 +159,8 @@ stages:
                   echo "Issue: $WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION"
                   
                   # Run quick-fix command (5 min timeout - quick fixes should be fast)
-                  timeout 300 claude --dangerously-skip-permissions \
-                    "/quick-fix \"$WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION\"" \
+                  timeout 300 claude -p "/quick-fix \"$WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION\"" \
+                    --dangerously-skip-permissions \
                     --output-format json \
                     > $(Agent.TempDirectory)/claude-output.json 2>&1 || true
                   
@@ -195,9 +195,9 @@ stages:
                     PLAN_INPUT="$WORK_ITEM_TITLE - Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
                   fi
                   
-                  # Run plan-feature command (15 min timeout - planning takes time)
-                  timeout 900 claude --dangerously-skip-permissions \
-                    "/plan-feature \"$PLAN_INPUT\"" \
+                  # Run plan-feature command (30 min timeout - planning takes time)
+                  timeout 1800 claude -p "/plan-feature \"$PLAN_INPUT\"" \
+                    --dangerously-skip-permissions \
                     --output-format json \
                     > $(Agent.TempDirectory)/claude-output.json 2>&1
                   
@@ -257,8 +257,8 @@ stages:
                   echo "Running Claude Code implement-plan..."
                   
                   # Run implement-plan command (60 min timeout - implementation can be lengthy)
-                  timeout 3600 claude --dangerously-skip-permissions \
-                    "/implement-plan implementation-plan.md" \
+                  timeout 3600 claude -p "/implement-plan implementation-plan.md" \
+                    --dangerously-skip-permissions \
                     --output-format json \
                     > $(Agent.TempDirectory)/claude-output.json 2>&1
                   
