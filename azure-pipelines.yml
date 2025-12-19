@@ -3,6 +3,13 @@
 
 trigger: none # Manual/API trigger only
 
+resources:
+  repositories:
+    - repository: configRepo
+      type: github
+      endpoint: 'github.com_JasonPaff'
+      name: 'JasonPaff/claude-planner-config'
+
 parameters:
   - name: workItemId
     type: string
@@ -21,10 +28,6 @@ parameters:
 
 variables:
   - group: AI # Contains ANTHROPIC_API_KEY
-  - name: configRepo
-    value: 'claude-planner-config'
-  - name: configRepoUrl
-    value: 'https://github.com/JasonPaff/claude-planner-config.git'
   - name: targetRepoPath
     value: '$(Build.SourcesDirectory)/target'
   - name: configRepoPath
@@ -46,17 +49,13 @@ stages:
           # ============================================
           # PHASE 1: CHECKOUT REPOSITORIES
           # ============================================
-          
+
           - checkout: none
             displayName: 'Skip default checkout'
 
           # Checkout config repo from GitHub
-          - script: |
-              echo "Cloning config repository..."
-              git clone $(configRepoUrl) $(configRepoPath)
-            displayName: 'Checkout config repo (GitHub)'
-            env:
-              GIT_TERMINAL_PROMPT: 0
+          - checkout: configRepo
+            path: s/config
 
           # Checkout target repo from Azure Repos
           - script: |
@@ -124,126 +123,126 @@ stages:
 
           # --- QUICK FIX WORKFLOW ---
           - ${{ if eq(parameters.workflowType, 'quick-fix') }}:
-            - script: |
-                set -e
-                source $(Agent.TempDirectory)/work-item.env
-                
-                cd $(targetRepoPath)
-                
-                echo "Running Claude Code quick-fix..."
-                echo "Issue: $WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION"
-                
-                # Run quick-fix command
-                claude --dangerously-skip-permissions \
-                  "/quick-fix \"$WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION\"" \
-                  --output-format json \
-                  > $(Agent.TempDirectory)/claude-output.json 2>&1 || true
-                
-                # Check if Claude bailed out (complexity check failed)
-                if grep -q "Quick Fix Not Appropriate" $(Agent.TempDirectory)/claude-output.json; then
-                  echo "##vso[task.logissue type=warning]Quick fix not appropriate - issue is too complex"
-                  echo "##vso[task.setvariable variable=BAIL_OUT]true"
-                else
-                  echo "##vso[task.setvariable variable=BAIL_OUT]false"
-                fi
-                
-                cat $(Agent.TempDirectory)/claude-output.json
-              displayName: 'Run Claude Code /quick-fix'
-              env:
-                ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+              - script: |
+                  set -e
+                  source $(Agent.TempDirectory)/work-item.env
+                  
+                  cd $(targetRepoPath)
+                  
+                  echo "Running Claude Code quick-fix..."
+                  echo "Issue: $WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION"
+                  
+                  # Run quick-fix command
+                  claude --dangerously-skip-permissions \
+                    "/quick-fix \"$WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION\"" \
+                    --output-format json \
+                    > $(Agent.TempDirectory)/claude-output.json 2>&1 || true
+                  
+                  # Check if Claude bailed out (complexity check failed)
+                  if grep -q "Quick Fix Not Appropriate" $(Agent.TempDirectory)/claude-output.json; then
+                    echo "##vso[task.logissue type=warning]Quick fix not appropriate - issue is too complex"
+                    echo "##vso[task.setvariable variable=BAIL_OUT]true"
+                  else
+                    echo "##vso[task.setvariable variable=BAIL_OUT]false"
+                  fi
+                  
+                  cat $(Agent.TempDirectory)/claude-output.json
+                displayName: 'Run Claude Code /quick-fix'
+                env:
+                  ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
 
           # --- PLAN WORKFLOW ---
           - ${{ if eq(parameters.workflowType, 'plan') }}:
-            - script: |
-                set -e
-                source $(Agent.TempDirectory)/work-item.env
-                
-                cd $(targetRepoPath)
-                
-                echo "Running Claude Code plan-feature..."
-                echo "Feature: $WORK_ITEM_TITLE"
-                echo "Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
-                
-                # Combine title and acceptance criteria for planning
-                PLAN_INPUT="$WORK_ITEM_TITLE"
-                if [ -n "$WORK_ITEM_ACCEPTANCE_CRITERIA" ]; then
-                  PLAN_INPUT="$WORK_ITEM_TITLE - Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
-                fi
-                
-                # Run plan-feature command
-                claude --dangerously-skip-permissions \
-                  "/plan-feature \"$PLAN_INPUT\"" \
-                  --output-format json \
-                  > $(Agent.TempDirectory)/claude-output.json 2>&1
-                
-                cat $(Agent.TempDirectory)/claude-output.json
-                
-                # Find the generated plan file
-                PLAN_FILE=$(find $(targetRepoPath)/docs -name "*-implementation-plan.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
-                
-                if [ -n "$PLAN_FILE" ]; then
-                  echo "Found plan file: $PLAN_FILE"
-                  cp "$PLAN_FILE" $(Agent.TempDirectory)/implementation-plan.md
-                  echo "##vso[task.setvariable variable=PLAN_FILE]$PLAN_FILE"
-                else
-                  echo "##vso[task.logissue type=error]No plan file generated"
-                  exit 1
-                fi
-              displayName: 'Run Claude Code /plan-feature'
-              env:
-                ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+              - script: |
+                  set -e
+                  source $(Agent.TempDirectory)/work-item.env
+                  
+                  cd $(targetRepoPath)
+                  
+                  echo "Running Claude Code plan-feature..."
+                  echo "Feature: $WORK_ITEM_TITLE"
+                  echo "Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
+                  
+                  # Combine title and acceptance criteria for planning
+                  PLAN_INPUT="$WORK_ITEM_TITLE"
+                  if [ -n "$WORK_ITEM_ACCEPTANCE_CRITERIA" ]; then
+                    PLAN_INPUT="$WORK_ITEM_TITLE - Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
+                  fi
+                  
+                  # Run plan-feature command
+                  claude --dangerously-skip-permissions \
+                    "/plan-feature \"$PLAN_INPUT\"" \
+                    --output-format json \
+                    > $(Agent.TempDirectory)/claude-output.json 2>&1
+                  
+                  cat $(Agent.TempDirectory)/claude-output.json
+                  
+                  # Find the generated plan file
+                  PLAN_FILE=$(find $(targetRepoPath)/docs -name "*-implementation-plan.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
+                  
+                  if [ -n "$PLAN_FILE" ]; then
+                    echo "Found plan file: $PLAN_FILE"
+                    cp "$PLAN_FILE" $(Agent.TempDirectory)/implementation-plan.md
+                    echo "##vso[task.setvariable variable=PLAN_FILE]$PLAN_FILE"
+                  else
+                    echo "##vso[task.logissue type=error]No plan file generated"
+                    exit 1
+                  fi
+                displayName: 'Run Claude Code /plan-feature'
+                env:
+                  ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
 
           # --- IMPLEMENT WORKFLOW ---
           - ${{ if eq(parameters.workflowType, 'implement') }}:
-            - script: |
-                set -e
-                
-                echo "Downloading implementation plan from work item..."
-                chmod +x $(configRepoPath)/scripts/fetch-work-item.sh
-                
-                # Fetch attachments from work item
-                ATTACHMENTS_URL="https://dev.azure.com/jasonpaffES/Head%20Shakers/_apis/wit/workitems/${{ parameters.workItemId }}?api-version=7.0&\$expand=relations"
-                
-                curl -s -H "Authorization: Bearer $(System.AccessToken)" "$ATTACHMENTS_URL" \
-                  > $(Agent.TempDirectory)/work-item-full.json
-                
-                # Find and download the plan attachment
-                PLAN_URL=$(jq -r '.relations[]? | select(.rel == "AttachedFile") | select(.attributes.name | contains("implementation-plan")) | .url' $(Agent.TempDirectory)/work-item-full.json | head -1)
-                
-                if [ -z "$PLAN_URL" ] || [ "$PLAN_URL" == "null" ]; then
-                  echo "##vso[task.logissue type=error]No implementation plan attachment found on work item"
-                  exit 1
-                fi
-                
-                echo "Downloading plan from: $PLAN_URL"
-                curl -s -H "Authorization: Bearer $(System.AccessToken)" "$PLAN_URL" \
-                  -o $(Agent.TempDirectory)/implementation-plan.md
-                
-                # Copy plan to target repo for Claude to read
-                cp $(Agent.TempDirectory)/implementation-plan.md $(targetRepoPath)/implementation-plan.md
-              displayName: 'Download implementation plan'
+              - script: |
+                  set -e
+                  
+                  echo "Downloading implementation plan from work item..."
+                  chmod +x $(configRepoPath)/scripts/fetch-work-item.sh
+                  
+                  # Fetch attachments from work item
+                  ATTACHMENTS_URL="https://dev.azure.com/jasonpaffES/Head%20Shakers/_apis/wit/workitems/${{ parameters.workItemId }}?api-version=7.0&\$expand=relations"
+                  
+                  curl -s -H "Authorization: Bearer $(System.AccessToken)" "$ATTACHMENTS_URL" \
+                    > $(Agent.TempDirectory)/work-item-full.json
+                  
+                  # Find and download the plan attachment
+                  PLAN_URL=$(jq -r '.relations[]? | select(.rel == "AttachedFile") | select(.attributes.name | contains("implementation-plan")) | .url' $(Agent.TempDirectory)/work-item-full.json | head -1)
+                  
+                  if [ -z "$PLAN_URL" ] || [ "$PLAN_URL" == "null" ]; then
+                    echo "##vso[task.logissue type=error]No implementation plan attachment found on work item"
+                    exit 1
+                  fi
+                  
+                  echo "Downloading plan from: $PLAN_URL"
+                  curl -s -H "Authorization: Bearer $(System.AccessToken)" "$PLAN_URL" \
+                    -o $(Agent.TempDirectory)/implementation-plan.md
+                  
+                  # Copy plan to target repo for Claude to read
+                  cp $(Agent.TempDirectory)/implementation-plan.md $(targetRepoPath)/implementation-plan.md
+                displayName: 'Download implementation plan'
 
-            - script: |
-                set -e
-                source $(Agent.TempDirectory)/work-item.env
-                
-                cd $(targetRepoPath)
-                
-                echo "Running Claude Code implement-plan..."
-                
-                # Run implement-plan command
-                claude --dangerously-skip-permissions \
-                  "/implement-plan implementation-plan.md" \
-                  --output-format json \
-                  > $(Agent.TempDirectory)/claude-output.json 2>&1
-                
-                cat $(Agent.TempDirectory)/claude-output.json
-                
-                # Clean up the plan file (don't commit it)
-                rm -f $(targetRepoPath)/implementation-plan.md
-              displayName: 'Run Claude Code /implement-plan'
-              env:
-                ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+              - script: |
+                  set -e
+                  source $(Agent.TempDirectory)/work-item.env
+                  
+                  cd $(targetRepoPath)
+                  
+                  echo "Running Claude Code implement-plan..."
+                  
+                  # Run implement-plan command
+                  claude --dangerously-skip-permissions \
+                    "/implement-plan implementation-plan.md" \
+                    --output-format json \
+                    > $(Agent.TempDirectory)/claude-output.json 2>&1
+                  
+                  cat $(Agent.TempDirectory)/claude-output.json
+                  
+                  # Clean up the plan file (don't commit it)
+                  rm -f $(targetRepoPath)/implementation-plan.md
+                displayName: 'Run Claude Code /implement-plan'
+                env:
+                  ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
 
           # ============================================
           # PHASE 5: HANDLE OUTPUTS
@@ -251,92 +250,92 @@ stages:
 
           # --- CREATE PR (quick-fix and implement) ---
           - ${{ if or(eq(parameters.workflowType, 'quick-fix'), eq(parameters.workflowType, 'implement')) }}:
-            - script: |
-                # Skip if quick-fix bailed out
-                if [ "$(BAIL_OUT)" == "true" ]; then
-                  echo "Skipping PR creation - quick fix bailed out"
-                  exit 0
-                fi
-                
-                cd $(targetRepoPath)
-                
-                # Check if there are any changes
-                if [ -z "$(git status --porcelain)" ]; then
-                  echo "##vso[task.logissue type=warning]No changes to commit"
-                  echo "##vso[task.setvariable variable=NO_CHANGES]true"
-                  exit 0
-                fi
-                
-                # Create feature branch
-                BRANCH_NAME="ai/${{ parameters.workItemId }}-${{ parameters.workflowType }}"
-                echo "Creating branch: $BRANCH_NAME"
-                
-                git checkout -b "$BRANCH_NAME"
-                git add -A
-                git commit -m "AI ${{ parameters.workflowType }}: Work Item #${{ parameters.workItemId }}"
-                git push origin "$BRANCH_NAME"
-                
-                echo "##vso[task.setvariable variable=BRANCH_NAME]$BRANCH_NAME"
-              displayName: 'Create branch and push changes'
-              condition: succeededOrFailed()
+              - script: |
+                  # Skip if quick-fix bailed out
+                  if [ "$(BAIL_OUT)" == "true" ]; then
+                    echo "Skipping PR creation - quick fix bailed out"
+                    exit 0
+                  fi
+                  
+                  cd $(targetRepoPath)
+                  
+                  # Check if there are any changes
+                  if [ -z "$(git status --porcelain)" ]; then
+                    echo "##vso[task.logissue type=warning]No changes to commit"
+                    echo "##vso[task.setvariable variable=NO_CHANGES]true"
+                    exit 0
+                  fi
+                  
+                  # Create feature branch
+                  BRANCH_NAME="ai/${{ parameters.workItemId }}-${{ parameters.workflowType }}"
+                  echo "Creating branch: $BRANCH_NAME"
+                  
+                  git checkout -b "$BRANCH_NAME"
+                  git add -A
+                  git commit -m "AI ${{ parameters.workflowType }}: Work Item #${{ parameters.workItemId }}"
+                  git push origin "$BRANCH_NAME"
+                  
+                  echo "##vso[task.setvariable variable=BRANCH_NAME]$BRANCH_NAME"
+                displayName: 'Create branch and push changes'
+                condition: succeededOrFailed()
 
-            - script: |
-                # Skip if bailed out or no changes
-                if [ "$(BAIL_OUT)" == "true" ] || [ "$(NO_CHANGES)" == "true" ]; then
-                  echo "Skipping PR creation"
-                  exit 0
-                fi
-                
-                chmod +x $(configRepoPath)/scripts/create-pr.sh
-                $(configRepoPath)/scripts/create-pr.sh \
-                  "${{ parameters.workItemId }}" \
-                  "$(BRANCH_NAME)" \
-                  "${{ parameters.workflowType }}" \
-                  "$(System.AccessToken)"
-              displayName: 'Create Pull Request'
-              condition: succeededOrFailed()
-              env:
-                AZURE_DEVOPS_ORG: 'jasonpaffES'
-                AZURE_DEVOPS_PROJECT: 'Head Shakers'
-                TARGET_REPO: '${{ parameters.targetRepo }}'
+              - script: |
+                  # Skip if bailed out or no changes
+                  if [ "$(BAIL_OUT)" == "true" ] || [ "$(NO_CHANGES)" == "true" ]; then
+                    echo "Skipping PR creation"
+                    exit 0
+                  fi
+                  
+                  chmod +x $(configRepoPath)/scripts/create-pr.sh
+                  $(configRepoPath)/scripts/create-pr.sh \
+                    "${{ parameters.workItemId }}" \
+                    "$(BRANCH_NAME)" \
+                    "${{ parameters.workflowType }}" \
+                    "$(System.AccessToken)"
+                displayName: 'Create Pull Request'
+                condition: succeededOrFailed()
+                env:
+                  AZURE_DEVOPS_ORG: 'jasonpaffES'
+                  AZURE_DEVOPS_PROJECT: 'Head Shakers'
+                  TARGET_REPO: '${{ parameters.targetRepo }}'
 
           # --- ATTACH PLAN (plan workflow) ---
           - ${{ if eq(parameters.workflowType, 'plan') }}:
-            - script: |
-                chmod +x $(configRepoPath)/scripts/attach-plan.sh
-                $(configRepoPath)/scripts/attach-plan.sh \
-                  "${{ parameters.workItemId }}" \
-                  "$(Agent.TempDirectory)/implementation-plan.md" \
-                  "$(System.AccessToken)"
-              displayName: 'Attach plan to work item'
-              env:
-                AZURE_DEVOPS_ORG: 'jasonpaffES'
-                AZURE_DEVOPS_PROJECT: 'Head Shakers'
+              - script: |
+                  chmod +x $(configRepoPath)/scripts/attach-plan.sh
+                  $(configRepoPath)/scripts/attach-plan.sh \
+                    "${{ parameters.workItemId }}" \
+                    "$(Agent.TempDirectory)/implementation-plan.md" \
+                    "$(System.AccessToken)"
+                displayName: 'Attach plan to work item'
+                env:
+                  AZURE_DEVOPS_ORG: 'jasonpaffES'
+                  AZURE_DEVOPS_PROJECT: 'Head Shakers'
 
           # --- HANDLE BAIL OUT (quick-fix only) ---
           - ${{ if eq(parameters.workflowType, 'quick-fix') }}:
-            - script: |
-                if [ "$(BAIL_OUT)" != "true" ]; then
-                  exit 0
-                fi
-                
-                echo "Quick fix bailed out - adding comment to work item"
-                
-                # Get the user who triggered this (from work item changed by)
-                CHANGED_BY=$(jq -r '.fields["System.ChangedBy"].uniqueName // "unknown"' $(Agent.TempDirectory)/work-item.json)
-                
-                COMMENT="⚠️ **AI Quick Fix Could Not Complete**\n\nThe issue appears to be too complex for an automated quick fix.\n\n**Recommendation**: Move this item to 'AI Plan' status to generate a full implementation plan, or handle manually.\n\n_Triggered by: @<$CHANGED_BY>_"
-                
-                # Add comment via API
-                curl -s -X POST \
-                  -H "Authorization: Bearer $(System.AccessToken)" \
-                  -H "Content-Type: application/json" \
-                  -d "{\"text\": \"$COMMENT\"}" \
-                  "https://dev.azure.com/jasonpaffES/Head%20Shakers/_apis/wit/workitems/${{ parameters.workItemId }}/comments?api-version=7.0-preview.3"
-                
-                echo "Comment added to work item"
-              displayName: 'Handle quick-fix bail out'
-              condition: eq(variables['BAIL_OUT'], 'true')
+              - script: |
+                  if [ "$(BAIL_OUT)" != "true" ]; then
+                    exit 0
+                  fi
+                  
+                  echo "Quick fix bailed out - adding comment to work item"
+                  
+                  # Get the user who triggered this (from work item changed by)
+                  CHANGED_BY=$(jq -r '.fields["System.ChangedBy"].uniqueName // "unknown"' $(Agent.TempDirectory)/work-item.json)
+                  
+                  COMMENT="⚠️ **AI Quick Fix Could Not Complete**\n\nThe issue appears to be too complex for an automated quick fix.\n\n**Recommendation**: Move this item to 'AI Plan' status to generate a full implementation plan, or handle manually.\n\n_Triggered by: @<$CHANGED_BY>_"
+                  
+                  # Add comment via API
+                  curl -s -X POST \
+                    -H "Authorization: Bearer $(System.AccessToken)" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"text\": \"$COMMENT\"}" \
+                    "https://dev.azure.com/jasonpaffES/Head%20Shakers/_apis/wit/workitems/${{ parameters.workItemId }}/comments?api-version=7.0-preview.3"
+                  
+                  echo "Comment added to work item"
+                displayName: 'Handle quick-fix bail out'
+                condition: eq(variables['BAIL_OUT'], 'true')
 
           # ============================================
           # PHASE 6: CLEANUP & REPORTING
