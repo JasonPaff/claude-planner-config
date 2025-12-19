@@ -53,11 +53,15 @@ stages:
 
           # Checkout target repo from Azure Repos
           - script: |
+              set -e
               echo "Cloning target repository..."
+              echo "Target path: $(targetRepoPath)"
               git clone https://$(System.AccessToken)@dev.azure.com/jasonpaffES/Head%20Shakers/_git/${{ parameters.targetRepo }} $(targetRepoPath)
               cd $(targetRepoPath)
               git config user.email "ai-pipeline@azure.com"
               git config user.name "AI Pipeline"
+              echo "Clone successful. Contents:"
+              ls -la
             displayName: 'Checkout target repo (Azure Repos)'
 
           # ============================================
@@ -93,8 +97,18 @@ stages:
                 exit 1
               fi
 
-              cp -r $(configRepoPath)/.claude $(targetRepoPath)/
-              echo "Copy successful. Contents:"
+              # Check target directory exists
+              if [ ! -d "$(targetRepoPath)" ]; then
+                echo "##[error]Target repo directory not found at $(targetRepoPath)"
+                echo "The git clone step may have failed"
+                exit 1
+              fi
+
+              echo "Target repo contents before copy:"
+              ls -la $(targetRepoPath)/
+
+              cp -rv $(configRepoPath)/.claude $(targetRepoPath)/
+              echo "Copy completed. Verifying:"
               ls -la $(targetRepoPath)/.claude/
             displayName: 'Copy .claude config to target repo'
 
