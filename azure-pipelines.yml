@@ -20,7 +20,7 @@ parameters:
     default: 'head-shakers'
 
 variables:
-  - group: AI # Contains ANTHROPIC_API_KEY
+  - group: AI # Contains ANTHROPIC_API_KEY and GITHUB_PAT
   - name: targetRepoPath
     value: '$(Build.SourcesDirectory)/target'
   - name: configRepoPath
@@ -51,18 +51,20 @@ stages:
           - checkout: self
             path: s/config
 
-          # Checkout target repo from Azure Repos
+          # Checkout target repo from GitHub
           - script: |
               set -e
-              echo "Cloning target repository..."
+              echo "Cloning target repository from GitHub..."
               echo "Target path: $(targetRepoPath)"
-              git clone https://$(System.AccessToken)@dev.azure.com/jasonpaffES/Head%20Shakers/_git/${{ parameters.targetRepo }} $(targetRepoPath)
+              git clone https://$(GITHUB_PAT)@github.com/JasonPaff/${{ parameters.targetRepo }}.git $(targetRepoPath)
               cd $(targetRepoPath)
               git config user.email "ai-pipeline@azure.com"
               git config user.name "AI Pipeline"
               echo "Clone successful. Contents:"
               ls -la
-            displayName: 'Checkout target repo (Azure Repos)'
+            displayName: 'Checkout target repo (GitHub)'
+            env:
+              GITHUB_PAT: $(GITHUB_PAT)
 
           # ============================================
           # PHASE 2: SETUP ENVIRONMENT
@@ -308,19 +310,22 @@ stages:
                     echo "Skipping PR creation"
                     exit 0
                   fi
-                  
+
                   chmod +x $(configRepoPath)/scripts/create-pr.sh
                   $(configRepoPath)/scripts/create-pr.sh \
                     "${{ parameters.workItemId }}" \
                     "$(BRANCH_NAME)" \
                     "${{ parameters.workflowType }}" \
+                    "$(GITHUB_PAT)" \
                     "$(System.AccessToken)"
                 displayName: 'Create Pull Request'
                 condition: succeededOrFailed()
                 env:
+                  GITHUB_PAT: $(GITHUB_PAT)
+                  GITHUB_OWNER: 'JasonPaff'
+                  GITHUB_REPO: '${{ parameters.targetRepo }}'
                   AZURE_DEVOPS_ORG: 'jasonpaffES'
                   AZURE_DEVOPS_PROJECT: 'Head Shakers'
-                  TARGET_REPO: '${{ parameters.targetRepo }}'
 
           # --- ATTACH PLAN (plan workflow) ---
           - ${{ if eq(parameters.workflowType, 'plan') }}:
