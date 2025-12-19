@@ -25,8 +25,6 @@ variables:
     value: '$(Build.SourcesDirectory)/target'
   - name: configRepoPath
     value: '$(Build.SourcesDirectory)'
-  - name: nodeVersion
-    value: '20.x'
   - name: BAIL_OUT
     value: 'false'
   - name: NO_CHANGES
@@ -69,18 +67,6 @@ stages:
           # ============================================
           # PHASE 2: SETUP ENVIRONMENT
           # ============================================
-
-          - task: NodeTool@0
-            inputs:
-              versionSpec: $(nodeVersion)
-            displayName: 'Install Node.js'
-
-          # Install Claude Code CLI
-          - script: |
-              echo "Installing Claude Code CLI..."
-              npm install -g @anthropic-ai/claude-code
-              claude --version
-            displayName: 'Install Claude Code CLI'
 
           # Copy .claude config into target repo
           - script: |
@@ -125,19 +111,20 @@ stages:
                 "${{ parameters.workItemId }}" \
                 "$(System.AccessToken)" \
                 "$(Agent.TempDirectory)/work-item.json"
-              
-              # Parse and export work item fields
+
+              # Parse work item fields
               TITLE=$(jq -r '.fields["System.Title"]' $(Agent.TempDirectory)/work-item.json)
               DESCRIPTION=$(jq -r '.fields["System.Description"] // ""' $(Agent.TempDirectory)/work-item.json | sed 's/<[^>]*>//g')
               ACCEPTANCE_CRITERIA=$(jq -r '.fields["Microsoft.VSTS.Common.AcceptanceCriteria"] // ""' $(Agent.TempDirectory)/work-item.json | sed 's/<[^>]*>//g')
-              
+
               echo "Work Item: $TITLE"
-              
-              # Save to environment file for subsequent steps
-              # Escape any existing double quotes in values, then wrap in quotes
-              echo "WORK_ITEM_TITLE=\"${TITLE//\"/\\\"}\"" >> $(Agent.TempDirectory)/work-item.env
-              echo "WORK_ITEM_DESCRIPTION=\"${DESCRIPTION//\"/\\\"}\"" >> $(Agent.TempDirectory)/work-item.env
-              echo "WORK_ITEM_ACCEPTANCE_CRITERIA=\"${ACCEPTANCE_CRITERIA//\"/\\\"}\"" >> $(Agent.TempDirectory)/work-item.env
+              echo "Description: $DESCRIPTION"
+              echo "Acceptance Criteria: $ACCEPTANCE_CRITERIA"
+
+              # Set as pipeline variables for use in subsequent tasks
+              echo "##vso[task.setvariable variable=WORK_ITEM_TITLE]$TITLE"
+              echo "##vso[task.setvariable variable=WORK_ITEM_DESCRIPTION]$DESCRIPTION"
+              echo "##vso[task.setvariable variable=WORK_ITEM_ACCEPTANCE_CRITERIA]$ACCEPTANCE_CRITERIA"
             displayName: 'Fetch work item details'
             env:
               AZURE_DEVOPS_ORG: 'jasonpaffES'
@@ -149,63 +136,45 @@ stages:
 
           # --- QUICK FIX WORKFLOW ---
           - ${{ if eq(parameters.workflowType, 'quick-fix') }}:
+              - task: ClaudeCodeBaseTask@1
+                displayName: 'Run Claude Code /quick-fix'
+                inputs:
+                  prompt: '/quick-fix "$(WORK_ITEM_TITLE) - $(WORK_ITEM_DESCRIPTION)"'
+                  anthropic_api_key: '$(ANTHROPIC_API_KEY)'
+                  working_directory: '$(targetRepoPath)'
+                  timeout_minutes: '5'
+                  allowed_tools: 'Bash,Glob,Grep,Read,Write,Edit'
+                continueOnError: true
+
               - script: |
-                  set -e
-                  source $(Agent.TempDirectory)/work-item.env
-                  
-                  cd $(targetRepoPath)
-                  
-                  echo "Running Claude Code quick-fix..."
-                  echo "Issue: $WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION"
-                  
-                  # Run quick-fix command (5 min timeout - quick fixes should be fast)
-                  timeout 300 claude -p "/quick-fix \"$WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION\"" \
-                    --dangerously-skip-permissions \
-                    --output-format json \
-                    > $(Agent.TempDirectory)/claude-output.json 2>&1 || true
-                  
                   # Check if Claude bailed out (complexity check failed)
-                  if grep -q "Quick Fix Not Appropriate" $(Agent.TempDirectory)/claude-output.json; then
-                    echo "##vso[task.logissue type=warning]Quick fix not appropriate - issue is too complex"
-                    echo "##vso[task.setvariable variable=BAIL_OUT]true"
+                  if [ -f "$(targetRepoPath)/.claude-output.json" ]; then
+                    if grep -q "Quick Fix Not Appropriate" $(targetRepoPath)/.claude-output.json; then
+                      echo "##vso[task.logissue type=warning]Quick fix not appropriate - issue is too complex"
+                      echo "##vso[task.setvariable variable=BAIL_OUT]true"
+                    else
+                      echo "##vso[task.setvariable variable=BAIL_OUT]false"
+                    fi
                   else
                     echo "##vso[task.setvariable variable=BAIL_OUT]false"
                   fi
-                  
-                  cat $(Agent.TempDirectory)/claude-output.json
-                displayName: 'Run Claude Code /quick-fix'
-                env:
-                  ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+                displayName: 'Check quick-fix result'
 
           # --- PLAN WORKFLOW ---
           - ${{ if eq(parameters.workflowType, 'plan') }}:
+              - task: ClaudeCodeBaseTask@1
+                displayName: 'Run Claude Code /plan-feature'
+                inputs:
+                  prompt: '/plan-feature "$(WORK_ITEM_TITLE) - Acceptance Criteria: $(WORK_ITEM_ACCEPTANCE_CRITERIA)"'
+                  anthropic_api_key: '$(ANTHROPIC_API_KEY)'
+                  working_directory: '$(targetRepoPath)'
+                  timeout_minutes: '30'
+                  allowed_tools: 'Bash,Glob,Grep,Read,Write,Edit,Task'
+
               - script: |
-                  set -e
-                  source $(Agent.TempDirectory)/work-item.env
-                  
-                  cd $(targetRepoPath)
-                  
-                  echo "Running Claude Code plan-feature..."
-                  echo "Feature: $WORK_ITEM_TITLE"
-                  echo "Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
-                  
-                  # Combine title and acceptance criteria for planning
-                  PLAN_INPUT="$WORK_ITEM_TITLE"
-                  if [ -n "$WORK_ITEM_ACCEPTANCE_CRITERIA" ]; then
-                    PLAN_INPUT="$WORK_ITEM_TITLE - Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
-                  fi
-                  
-                  # Run plan-feature command (30 min timeout - planning takes time)
-                  timeout 1800 claude -p "/plan-feature \"$PLAN_INPUT\"" \
-                    --dangerously-skip-permissions \
-                    --output-format json \
-                    > $(Agent.TempDirectory)/claude-output.json 2>&1
-                  
-                  cat $(Agent.TempDirectory)/claude-output.json
-                  
                   # Find the generated plan file
                   PLAN_FILE=$(find $(targetRepoPath)/docs -name "*-implementation-plan.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
-                  
+
                   if [ -n "$PLAN_FILE" ]; then
                     echo "Found plan file: $PLAN_FILE"
                     cp "$PLAN_FILE" $(Agent.TempDirectory)/implementation-plan.md
@@ -214,9 +183,7 @@ stages:
                     echo "##vso[task.logissue type=error]No plan file generated"
                     exit 1
                   fi
-                displayName: 'Run Claude Code /plan-feature'
-                env:
-                  ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+                displayName: 'Find generated plan file'
 
           # --- IMPLEMENT WORKFLOW ---
           - ${{ if eq(parameters.workflowType, 'implement') }}:
@@ -248,27 +215,19 @@ stages:
                   cp $(Agent.TempDirectory)/implementation-plan.md $(targetRepoPath)/implementation-plan.md
                 displayName: 'Download implementation plan'
 
+              - task: ClaudeCodeBaseTask@1
+                displayName: 'Run Claude Code /implement-plan'
+                inputs:
+                  prompt: '/implement-plan implementation-plan.md'
+                  anthropic_api_key: '$(ANTHROPIC_API_KEY)'
+                  working_directory: '$(targetRepoPath)'
+                  timeout_minutes: '60'
+                  allowed_tools: 'Bash,Glob,Grep,Read,Write,Edit,Task'
+
               - script: |
-                  set -e
-                  source $(Agent.TempDirectory)/work-item.env
-                  
-                  cd $(targetRepoPath)
-                  
-                  echo "Running Claude Code implement-plan..."
-                  
-                  # Run implement-plan command (60 min timeout - implementation can be lengthy)
-                  timeout 3600 claude -p "/implement-plan implementation-plan.md" \
-                    --dangerously-skip-permissions \
-                    --output-format json \
-                    > $(Agent.TempDirectory)/claude-output.json 2>&1
-                  
-                  cat $(Agent.TempDirectory)/claude-output.json
-                  
                   # Clean up the plan file (don't commit it)
                   rm -f $(targetRepoPath)/implementation-plan.md
-                displayName: 'Run Claude Code /implement-plan'
-                env:
-                  ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+                displayName: 'Clean up plan file'
 
           # ============================================
           # PHASE 5: HANDLE OUTPUTS
