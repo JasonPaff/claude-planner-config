@@ -134,9 +134,10 @@ stages:
               echo "Work Item: $TITLE"
               
               # Save to environment file for subsequent steps
-              echo "WORK_ITEM_TITLE=$TITLE" >> $(Agent.TempDirectory)/work-item.env
-              echo "WORK_ITEM_DESCRIPTION=$DESCRIPTION" >> $(Agent.TempDirectory)/work-item.env
-              echo "WORK_ITEM_ACCEPTANCE_CRITERIA=$ACCEPTANCE_CRITERIA" >> $(Agent.TempDirectory)/work-item.env
+              # Escape any existing double quotes in values, then wrap in quotes
+              echo "WORK_ITEM_TITLE=\"${TITLE//\"/\\\"}\"" >> $(Agent.TempDirectory)/work-item.env
+              echo "WORK_ITEM_DESCRIPTION=\"${DESCRIPTION//\"/\\\"}\"" >> $(Agent.TempDirectory)/work-item.env
+              echo "WORK_ITEM_ACCEPTANCE_CRITERIA=\"${ACCEPTANCE_CRITERIA//\"/\\\"}\"" >> $(Agent.TempDirectory)/work-item.env
             displayName: 'Fetch work item details'
             env:
               AZURE_DEVOPS_ORG: 'jasonpaffES'
