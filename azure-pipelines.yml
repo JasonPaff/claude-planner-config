@@ -3,13 +3,6 @@
 
 trigger: none # Manual/API trigger only
 
-resources:
-  repositories:
-    - repository: configRepo
-      type: github
-      endpoint: 'github.com_JasonPaff'
-      name: 'JasonPaff/claude-planner-config'
-
 parameters:
   - name: workItemId
     type: string
@@ -50,11 +43,8 @@ stages:
           # PHASE 1: CHECKOUT REPOSITORIES
           # ============================================
 
-          - checkout: none
-            displayName: 'Skip default checkout'
-
-          # Checkout config repo from GitHub
-          - checkout: configRepo
+          # Checkout this repo (claude-planner-config) which contains the config
+          - checkout: self
             path: s/config
 
           # Checkout target repo from Azure Repos
