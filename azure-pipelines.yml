@@ -41,7 +41,7 @@ stages:
     jobs:
       - job: ExecuteWorkflow
         displayName: 'Execute ${{ parameters.workflowType }}'
-        timeoutInMinutes: 30
+        timeoutInMinutes: 60
         steps:
           # ============================================
           # PHASE 1: CHECKOUT REPOSITORIES
@@ -158,8 +158,8 @@ stages:
                   echo "Running Claude Code quick-fix..."
                   echo "Issue: $WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION"
                   
-                  # Run quick-fix command
-                  claude --dangerously-skip-permissions \
+                  # Run quick-fix command (5 min timeout - quick fixes should be fast)
+                  timeout 300 claude --dangerously-skip-permissions \
                     "/quick-fix \"$WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION\"" \
                     --output-format json \
                     > $(Agent.TempDirectory)/claude-output.json 2>&1 || true
@@ -195,8 +195,8 @@ stages:
                     PLAN_INPUT="$WORK_ITEM_TITLE - Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
                   fi
                   
-                  # Run plan-feature command
-                  claude --dangerously-skip-permissions \
+                  # Run plan-feature command (30 min timeout - planning takes time)
+                  timeout 1800 claude --dangerously-skip-permissions \
                     "/plan-feature \"$PLAN_INPUT\"" \
                     --output-format json \
                     > $(Agent.TempDirectory)/claude-output.json 2>&1
@@ -256,8 +256,8 @@ stages:
                   
                   echo "Running Claude Code implement-plan..."
                   
-                  # Run implement-plan command
-                  claude --dangerously-skip-permissions \
+                  # Run implement-plan command (60 min timeout - implementation can be lengthy)
+                  timeout 3600 claude --dangerously-skip-permissions \
                     "/implement-plan implementation-plan.md" \
                     --output-format json \
                     > $(Agent.TempDirectory)/claude-output.json 2>&1
