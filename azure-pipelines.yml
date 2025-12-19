@@ -24,7 +24,7 @@ variables:
   - name: targetRepoPath
     value: '$(Build.SourcesDirectory)/target'
   - name: configRepoPath
-    value: '$(Build.SourcesDirectory)/config'
+    value: '$(Build.SourcesDirectory)'
   - name: nodeVersion
     value: '20.x'
 
