@@ -57,11 +57,15 @@ steps:
       echo "Work item context: $WORK_ITEM_CONTEXT"
 
       # Run implement-plan command (60 min timeout - implementation can be lengthy)
-      # Use </dev/null to prevent stdin hanging, --print for non-interactive
-      # Include work item context as additional prompt information
+      # Use stream-json for real-time output, pipe through processor for milestone detection
+      chmod +x $(configRepoPath)/scripts/stream-processor.sh
       set +e
       PROMPT=$(printf '/implement-plan implementation-plan.md\n\n%s' "$WORK_ITEM_CONTEXT")
-      timeout 3600 claude --print --dangerously-skip-permissions "$PROMPT" </dev/null 2>&1 | tee $(Agent.TempDirectory)/claude-output.txt
+      timeout 3600 claude --output-format stream-json --verbose --dangerously-skip-permissions \
+        "$PROMPT" </dev/null 2>&1 | \
+        tee $(Agent.TempDirectory)/raw-stream.jsonl | \
+        $(configRepoPath)/scripts/stream-processor.sh | \
+        tee $(Agent.TempDirectory)/claude-output.txt
       CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
       set -e
 

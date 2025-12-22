@@ -23,10 +23,14 @@ steps:
       echo "Full context: $ISSUE_CONTEXT"
 
       # Run quick-fix command (5 min timeout - quick fixes should be fast)
-      # Use </dev/null to prevent stdin hanging, --print for non-interactive
-      timeout 300 claude --print --dangerously-skip-permissions \
+      # Use stream-json for real-time output, pipe through processor for milestone detection
+      chmod +x $(configRepoPath)/scripts/stream-processor.sh
+      timeout 300 claude --output-format stream-json --verbose --dangerously-skip-permissions \
         "/quick-fix \"$ISSUE_CONTEXT\"" \
-        </dev/null 2>&1 | tee $(Agent.TempDirectory)/claude-output.txt || true
+        </dev/null 2>&1 | \
+        tee $(Agent.TempDirectory)/raw-stream.jsonl | \
+        $(configRepoPath)/scripts/stream-processor.sh | \
+        tee $(Agent.TempDirectory)/claude-output.txt || true
 
       # Check if Claude bailed out (complexity check failed)
       if grep -q "Quick Fix Not Appropriate" $(Agent.TempDirectory)/claude-output.txt 2>/dev/null; then

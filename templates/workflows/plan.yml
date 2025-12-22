@@ -23,10 +23,14 @@ steps:
       echo "Full prompt: /plan-feature \"$PLAN_INPUT\""
       echo "Starting Claude Code at: $(date -Iseconds)"
 
-      # Run plan-feature command with tee to show output in real-time
+      # Run plan-feature command with stream-json for real-time output
+      chmod +x $(configRepoPath)/scripts/stream-processor.sh
       set +e
-      timeout 1800 claude --print --dangerously-skip-permissions "/plan-feature \"$PLAN_INPUT\"" \
-        </dev/null 2>&1 | tee $(Agent.TempDirectory)/claude-output.txt
+      timeout 1800 claude --output-format stream-json --verbose --dangerously-skip-permissions \
+        "/plan-feature \"$PLAN_INPUT\"" </dev/null 2>&1 | \
+        tee $(Agent.TempDirectory)/raw-stream.jsonl | \
+        $(configRepoPath)/scripts/stream-processor.sh | \
+        tee $(Agent.TempDirectory)/claude-output.txt
       CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
       set -e
 
