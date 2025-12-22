@@ -182,36 +182,83 @@ stages:
               - script: |
                   set -e
                   source $(Agent.TempDirectory)/work-item.env
-                  
+
                   cd $(targetRepoPath)
-                  
+
+                  # Debug: Verify API key is set (show first/last 4 chars only)
+                  if [ -z "$ANTHROPIC_API_KEY" ]; then
+                    echo "##[error]ANTHROPIC_API_KEY is not set!"
+                    exit 1
+                  fi
+                  API_KEY_PREVIEW="${ANTHROPIC_API_KEY:0:4}...${ANTHROPIC_API_KEY: -4}"
+                  echo "API Key configured: $API_KEY_PREVIEW"
+
+                  # Debug: Show working directory and .claude config
+                  echo "Working directory: $(pwd)"
+                  echo ".claude config present: $(ls -la .claude/ 2>/dev/null | head -5 || echo 'NOT FOUND')"
+
                   echo "Running Claude Code plan-feature..."
                   echo "Feature: $WORK_ITEM_TITLE"
                   echo "Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
-                  
+
                   # Combine title and acceptance criteria for planning
                   PLAN_INPUT="$WORK_ITEM_TITLE"
                   if [ -n "$WORK_ITEM_ACCEPTANCE_CRITERIA" ]; then
                     PLAN_INPUT="$WORK_ITEM_TITLE - Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
                   fi
-                  
-                  # Run plan-feature command (30 min timeout - planning takes time)
+
+                  echo "Full prompt: /plan-feature \"$PLAN_INPUT\""
+
+                  # Quick connectivity test with timeout (10 seconds max)
+                  echo "Testing Claude Code connectivity..."
+                  set +e
+                  timeout 10 claude -p "Respond with only: OK" --dangerously-skip-permissions 2>&1
+                  TEST_EXIT=$?
+                  set -e
+                  if [ $TEST_EXIT -eq 124 ]; then
+                    echo "##[warning]Connectivity test timed out - API may be slow or unreachable"
+                  elif [ $TEST_EXIT -ne 0 ]; then
+                    echo "##[warning]Connectivity test failed with code $TEST_EXIT"
+                  else
+                    echo "Connectivity test passed"
+                  fi
+
+                  echo "Starting Claude Code at: $(date -Iseconds)"
+
+                  # Run plan-feature command with tee to show output in real-time
+                  # Use set +e to capture exit code without failing immediately
+                  set +e
                   timeout 1800 claude -p "/plan-feature \"$PLAN_INPUT\"" \
                     --dangerously-skip-permissions \
-                    --output-format json \
-                    > $(Agent.TempDirectory)/claude-output.json 2>&1
-                  
-                  cat $(Agent.TempDirectory)/claude-output.json
-                  
+                    2>&1 | tee $(Agent.TempDirectory)/claude-output.txt
+                  CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
+                  set -e
+
+                  echo "Claude Code finished at: $(date -Iseconds)"
+                  echo "Claude exit code: $CLAUDE_EXIT_CODE"
+
+                  if [ $CLAUDE_EXIT_CODE -eq 124 ]; then
+                    echo "##[error]Claude Code timed out after 30 minutes"
+                    echo "Last 50 lines of output:"
+                    tail -50 $(Agent.TempDirectory)/claude-output.txt || true
+                    exit 1
+                  elif [ $CLAUDE_EXIT_CODE -ne 0 ]; then
+                    echo "##[error]Claude Code failed with exit code $CLAUDE_EXIT_CODE"
+                    cat $(Agent.TempDirectory)/claude-output.txt || true
+                    exit 1
+                  fi
+
                   # Find the generated plan file
                   PLAN_FILE=$(find $(targetRepoPath)/docs -name "*-implementation-plan.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
-                  
+
                   if [ -n "$PLAN_FILE" ]; then
                     echo "Found plan file: $PLAN_FILE"
                     cp "$PLAN_FILE" $(Agent.TempDirectory)/implementation-plan.md
                     echo "##vso[task.setvariable variable=PLAN_FILE]$PLAN_FILE"
                   else
-                    echo "##vso[task.logissue type=error]No plan file generated"
+                    echo "##[error]No plan file generated"
+                    echo "Checking docs directory:"
+                    find $(targetRepoPath)/docs -type f -name "*.md" 2>/dev/null | head -20 || echo "No markdown files found"
                     exit 1
                   fi
                 displayName: 'Run Claude Code /plan-feature'
