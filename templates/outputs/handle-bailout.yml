@@ -16,7 +16,7 @@ steps:
       # Get the user who triggered this (from work item changed by)
       CHANGED_BY=$(jq -r '.fields["System.ChangedBy"].uniqueName // "unknown"' $(Agent.TempDirectory)/work-item.json)
 
-      COMMENT="⚠️ **AI Quick Fix Could Not Complete**\n\nThe issue appears to be too complex for an automated quick fix.\n\n**Recommendation**: Move this item to 'AI Plan' status to generate a full implementation plan, or handle manually.\n\n_Triggered by: @<$CHANGED_BY>_"
+      COMMENT="AI QUICK FIX COULD NOT COMPLETE\n\nThe issue appears to be too complex for an automated quick fix.\n\nRecommendation: Move this item to 'AI Plan' status to generate a full implementation plan, or handle manually.\n\nTriggered by: $CHANGED_BY"
 
       # Add comment via API
       curl -s -X POST \

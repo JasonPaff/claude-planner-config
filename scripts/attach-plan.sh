@@ -106,7 +106,7 @@ FILE_COUNT=$(grep -oE '\b[a-zA-Z0-9_/-]+\.(ts|tsx|js|jsx|css|sql|json)\b' "$PLAN
 
 COMMENT_PAYLOAD=$(cat <<EOF
 {
-  "text": "📋 **Implementation Plan Generated**\n\nAn AI-generated implementation plan has been attached to this work item.\n\n**Summary:**\n- **Title:** ${PLAN_TITLE}\n- **Phases:** ${PHASE_COUNT}\n- **Files:** ~${FILE_COUNT}\n\n**Next Steps:**\n1. Review the attached plan\n2. If approved, move this item to 'AI Implement' status\n3. If changes needed, update the acceptance criteria and re-run planning"
+  "text": "IMPLEMENTATION PLAN GENERATED\n\nAn AI-generated implementation plan has been attached to this work item.\n\nSummary:\n- Title: ${PLAN_TITLE}\n- Phases: ${PHASE_COUNT}\n- Files: ~${FILE_COUNT}\n\nNext Steps:\n1. Review the attached plan\n2. If approved, move this item to 'AI Implement' status\n3. If changes needed, update the acceptance criteria and re-run planning"
 }
 EOF
 )

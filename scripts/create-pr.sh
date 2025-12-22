@@ -144,15 +144,16 @@ if [ -n "$AZURE_TOKEN" ]; then
 
   COMMENT_URL="https://dev.azure.com/$ORG/$PROJECT_ENCODED/_apis/wit/workitems/$WORK_ITEM_ID/comments?api-version=7.0-preview.3"
 
-  COMMENT_TEXT="🚀 **Pull Request Created on GitHub**
+  COMMENT_TEXT="PULL REQUEST CREATED ON GITHUB
 
 AI pipeline has created a pull request for this work item.
 
-**PR:** [#$PR_NUMBER]($PR_URL)
-**Branch:** \`$BRANCH_NAME\`
-**Type:** $WORKFLOW_TYPE
+PR: #$PR_NUMBER
+URL: $PR_URL
+Branch: $BRANCH_NAME
+Type: $WORKFLOW_TYPE
 
-**Next Steps:**
+Next Steps:
 1. Review the pull request on GitHub
 2. Approve and merge when ready"
 
