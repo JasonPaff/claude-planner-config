@@ -13,8 +13,9 @@ steps:
       echo "Downloading implementation plan from work item..."
       chmod +x $(configRepoPath)/scripts/fetch-work-item.sh
 
-      # Fetch attachments from work item
-      ATTACHMENTS_URL="https://dev.azure.com/$(azureDevOpsOrg)/$(azureDevOpsProject)/_apis/wit/workitems/${{ parameters.workItemId }}?api-version=7.0&\$expand=relations"
+      # Fetch attachments from work item (URL-encode project name for spaces)
+      PROJECT_ENCODED=$(echo "$(azureDevOpsProject)" | sed 's/ /%20/g')
+      ATTACHMENTS_URL="https://dev.azure.com/$(azureDevOpsOrg)/${PROJECT_ENCODED}/_apis/wit/workitems/${{ parameters.workItemId }}?api-version=7.0&\$expand=relations"
 
       curl -s -H "Authorization: Bearer $(System.AccessToken)" "$ATTACHMENTS_URL" \
         > $(Agent.TempDirectory)/work-item-full.json

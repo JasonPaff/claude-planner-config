@@ -18,12 +18,13 @@ steps:
 
       COMMENT="AI QUICK FIX COULD NOT COMPLETE\n\nThe issue appears to be too complex for an automated quick fix.\n\nRecommendation: Move this item to 'AI Plan' status to generate a full implementation plan, or handle manually.\n\nTriggered by: $CHANGED_BY"
 
-      # Add comment via API
+      # Add comment via API (URL-encode project name for spaces)
+      PROJECT_ENCODED=$(echo "$(azureDevOpsProject)" | sed 's/ /%20/g')
       curl -s -X POST \
         -H "Authorization: Bearer $(System.AccessToken)" \
         -H "Content-Type: application/json" \
         -d "{\"text\": \"$COMMENT\"}" \
-        "https://dev.azure.com/$(azureDevOpsOrg)/$(azureDevOpsProject)/_apis/wit/workitems/${{ parameters.workItemId }}/comments?api-version=7.0-preview.3"
+        "https://dev.azure.com/$(azureDevOpsOrg)/${PROJECT_ENCODED}/_apis/wit/workitems/${{ parameters.workItemId }}/comments?api-version=7.0-preview.3"
 
       echo "Comment added to work item"
     displayName: 'Handle quick-fix bail out'
