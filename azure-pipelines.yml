@@ -209,18 +209,45 @@ stages:
 
                   echo "Full prompt: /plan-feature \"$PLAN_INPUT\""
 
-                  # Quick connectivity test with timeout (10 seconds max)
-                  echo "Testing Claude Code connectivity..."
+                  # Test raw API connectivity first
+                  echo "Testing raw API connectivity to api.anthropic.com..."
                   set +e
-                  timeout 10 claude -p "Respond with only: OK" --dangerously-skip-permissions 2>&1
+                  API_RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" \
+                    --max-time 10 \
+                    -X POST \
+                    -H "Content-Type: application/json" \
+                    -H "x-api-key: $ANTHROPIC_API_KEY" \
+                    -H "anthropic-version: 2023-06-01" \
+                    https://api.anthropic.com/v1/messages \
+                    -d '{"model":"claude-sonnet-4-20250514","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}' 2>&1)
+                  CURL_EXIT=$?
+                  set -e
+                  HTTP_CODE=$(echo "$API_RESPONSE" | grep "HTTP_CODE:" | cut -d: -f2)
+                  echo "Curl exit code: $CURL_EXIT, HTTP status: $HTTP_CODE"
+                  if [ "$HTTP_CODE" = "200" ]; then
+                    echo "Raw API test: SUCCESS"
+                  elif [ "$HTTP_CODE" = "401" ]; then
+                    echo "##[error]Raw API test: AUTHENTICATION FAILED - API key may be invalid"
+                    echo "Response: $(echo "$API_RESPONSE" | head -5)"
+                  elif [ "$HTTP_CODE" = "400" ]; then
+                    echo "##[warning]Raw API test: Bad request (expected for minimal test)"
+                  else
+                    echo "##[warning]Raw API test: HTTP $HTTP_CODE"
+                    echo "Response: $(echo "$API_RESPONSE" | head -10)"
+                  fi
+
+                  # Quick Claude CLI connectivity test with timeout (15 seconds max)
+                  echo "Testing Claude Code CLI connectivity..."
+                  set +e
+                  timeout 15 claude -p "Respond with only: OK" --dangerously-skip-permissions 2>&1
                   TEST_EXIT=$?
                   set -e
                   if [ $TEST_EXIT -eq 124 ]; then
-                    echo "##[warning]Connectivity test timed out - API may be slow or unreachable"
+                    echo "##[warning]Claude CLI connectivity test timed out - may need troubleshooting"
                   elif [ $TEST_EXIT -ne 0 ]; then
-                    echo "##[warning]Connectivity test failed with code $TEST_EXIT"
+                    echo "##[warning]Claude CLI connectivity test failed with code $TEST_EXIT"
                   else
-                    echo "Connectivity test passed"
+                    echo "Claude CLI connectivity test passed"
                   fi
 
                   echo "Starting Claude Code at: $(date -Iseconds)"
@@ -264,6 +291,9 @@ stages:
                 displayName: 'Run Claude Code /plan-feature'
                 env:
                   ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+                  # Disable any interactive features
+                  CI: 'true'
+                  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
 
           # --- IMPLEMENT WORKFLOW ---
           - ${{ if eq(parameters.workflowType, 'implement') }}:
