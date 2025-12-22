@@ -99,11 +99,14 @@ echo "----------------------------------------"
 echo "Adding comment to work item..."
 COMMENT_URL="https://dev.azure.com/$ORG/$PROJECT_ENCODED/_apis/wit/workitems/$WORK_ITEM_ID/comments?api-version=7.0-preview.3"
 
-PLAN_PREVIEW=$(head -50 "$PLAN_FILE" | sed 's/"/\\"/g' | tr '\n' ' ' | cut -c1-500)
+# Generate simple summary from plan
+PLAN_TITLE=$(grep -m1 '^# ' "$PLAN_FILE" | sed 's/^# //' || echo "Implementation Plan")
+PHASE_COUNT=$(grep -c '^## ' "$PLAN_FILE" || echo "0")
+FILE_COUNT=$(grep -oE '\b[a-zA-Z0-9_/-]+\.(ts|tsx|js|jsx|css|sql|json)\b' "$PLAN_FILE" | sort -u | wc -l | tr -d ' ')
 
 COMMENT_PAYLOAD=$(cat <<EOF
 {
-  "text": "📋 **Implementation Plan Generated**\n\nAn AI-generated implementation plan has been attached to this work item.\n\n**Preview:**\n\`\`\`\n${PLAN_PREVIEW}...\n\`\`\`\n\n**Next Steps:**\n1. Review the attached plan\n2. If approved, move this item to 'AI Implement' status\n3. If changes needed, update the acceptance criteria and re-run planning"
+  "text": "📋 **Implementation Plan Generated**\n\nAn AI-generated implementation plan has been attached to this work item.\n\n**Summary:**\n- **Title:** ${PLAN_TITLE}\n- **Phases:** ${PHASE_COUNT}\n- **Files:** ~${FILE_COUNT}\n\n**Next Steps:**\n1. Review the attached plan\n2. If approved, move this item to 'AI Implement' status\n3. If changes needed, update the acceptance criteria and re-run planning"
 }
 EOF
 )
