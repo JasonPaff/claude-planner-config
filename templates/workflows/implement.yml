@@ -44,11 +44,25 @@ steps:
 
       echo "Running Claude Code implement-plan..."
 
+      # Build work item context for additional reference
+      WORK_ITEM_CONTEXT="Work Item: $WORK_ITEM_TITLE"
+      if [ -n "$WORK_ITEM_DESCRIPTION" ]; then
+        WORK_ITEM_CONTEXT="$WORK_ITEM_CONTEXT - Description: $WORK_ITEM_DESCRIPTION"
+      fi
+      if [ -n "$WORK_ITEM_ACCEPTANCE_CRITERIA" ]; then
+        WORK_ITEM_CONTEXT="$WORK_ITEM_CONTEXT - Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
+      fi
+
+      echo "Work item context: $WORK_ITEM_CONTEXT"
+
       # Run implement-plan command (60 min timeout - implementation can be lengthy)
       # Use </dev/null to prevent stdin hanging, --print for non-interactive
+      # Include work item context as additional prompt information
       set +e
       timeout 3600 claude --print --dangerously-skip-permissions \
-        "/implement-plan implementation-plan.md" \
+        "/implement-plan implementation-plan.md
+
+$WORK_ITEM_CONTEXT" \
         </dev/null 2>&1 | tee $(Agent.TempDirectory)/claude-output.txt
       CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
       set -e

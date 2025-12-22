@@ -9,12 +9,23 @@ steps:
       cd $(targetRepoPath)
 
       echo "Running Claude Code quick-fix..."
-      echo "Issue: $WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION"
+      echo "Issue: $WORK_ITEM_TITLE"
+
+      # Build the full issue context
+      ISSUE_CONTEXT="$WORK_ITEM_TITLE"
+      if [ -n "$WORK_ITEM_DESCRIPTION" ]; then
+        ISSUE_CONTEXT="$ISSUE_CONTEXT - Description: $WORK_ITEM_DESCRIPTION"
+      fi
+      if [ -n "$WORK_ITEM_ACCEPTANCE_CRITERIA" ]; then
+        ISSUE_CONTEXT="$ISSUE_CONTEXT - Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
+      fi
+
+      echo "Full context: $ISSUE_CONTEXT"
 
       # Run quick-fix command (5 min timeout - quick fixes should be fast)
       # Use </dev/null to prevent stdin hanging, --print for non-interactive
       timeout 300 claude --print --dangerously-skip-permissions \
-        "/quick-fix \"$WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION\"" \
+        "/quick-fix \"$ISSUE_CONTEXT\"" \
         </dev/null 2>&1 | tee $(Agent.TempDirectory)/claude-output.txt || true
 
       # Check if Claude bailed out (complexity check failed)
