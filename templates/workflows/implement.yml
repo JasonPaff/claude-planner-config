@@ -59,11 +59,10 @@ steps:
       # Use </dev/null to prevent stdin hanging, --print for non-interactive
       # Include work item context as additional prompt information
       set +e
-      timeout 3600 claude --print --dangerously-skip-permissions \
-        "/implement-plan implementation-plan.md
+      PROMPT="/implement-plan implementation-plan.md
 
-$WORK_ITEM_CONTEXT" \
-        </dev/null 2>&1 | tee $(Agent.TempDirectory)/claude-output.txt
+$WORK_ITEM_CONTEXT"
+      timeout 3600 claude --print --dangerously-skip-permissions "$PROMPT" </dev/null 2>&1 | tee $(Agent.TempDirectory)/claude-output.txt
       CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
       set -e
 
