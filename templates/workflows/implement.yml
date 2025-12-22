@@ -1,0 +1,70 @@
+# Implement workflow
+# Downloads plan from work item and executes it
+
+parameters:
+  - name: workItemId
+    type: string
+
+steps:
+  # Download implementation plan from work item attachment
+  - script: |
+      set -e
+
+      echo "Downloading implementation plan from work item..."
+      chmod +x $(configRepoPath)/scripts/fetch-work-item.sh
+
+      # Fetch attachments from work item
+      ATTACHMENTS_URL="https://dev.azure.com/$(azureDevOpsOrg)/$(azureDevOpsProject)/_apis/wit/workitems/${{ parameters.workItemId }}?api-version=7.0&\$expand=relations"
+
+      curl -s -H "Authorization: Bearer $(System.AccessToken)" "$ATTACHMENTS_URL" \
+        > $(Agent.TempDirectory)/work-item-full.json
+
+      # Find and download the plan attachment
+      PLAN_URL=$(jq -r '.relations[]? | select(.rel == "AttachedFile") | select(.attributes.name | contains("implementation-plan")) | .url' $(Agent.TempDirectory)/work-item-full.json | head -1)
+
+      if [ -z "$PLAN_URL" ] || [ "$PLAN_URL" == "null" ]; then
+        echo "##vso[task.logissue type=error]No implementation plan attachment found on work item"
+        exit 1
+      fi
+
+      echo "Downloading plan from: $PLAN_URL"
+      curl -s -H "Authorization: Bearer $(System.AccessToken)" "$PLAN_URL" \
+        -o $(Agent.TempDirectory)/implementation-plan.md
+
+      # Copy plan to target repo for Claude to read
+      cp $(Agent.TempDirectory)/implementation-plan.md $(targetRepoPath)/implementation-plan.md
+    displayName: 'Download implementation plan'
+
+  # Execute the implementation plan
+  - script: |
+      set -e
+      source $(Agent.TempDirectory)/work-item.env
+
+      cd $(targetRepoPath)
+
+      echo "Running Claude Code implement-plan..."
+
+      # Run implement-plan command (60 min timeout - implementation can be lengthy)
+      # Use </dev/null to prevent stdin hanging, --print for non-interactive
+      set +e
+      timeout 3600 claude --print --dangerously-skip-permissions \
+        "/implement-plan implementation-plan.md" \
+        </dev/null 2>&1 | tee $(Agent.TempDirectory)/claude-output.txt
+      CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
+      set -e
+
+      echo "Claude exit code: $CLAUDE_EXIT_CODE"
+      cat $(Agent.TempDirectory)/claude-output.txt
+
+      # Clean up the plan file (don't commit it)
+      rm -f $(targetRepoPath)/implementation-plan.md
+
+      if [ $CLAUDE_EXIT_CODE -ne 0 ]; then
+        echo "##[error]Claude Code failed with exit code $CLAUDE_EXIT_CODE"
+        exit 1
+      fi
+    displayName: 'Run Claude Code /implement-plan'
+    env:
+      ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+      CI: 'true'
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'

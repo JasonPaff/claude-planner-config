@@ -1,5 +1,7 @@
 # AI-Powered DevOps Planning & Implementation Pipeline
 # Triggered via REST API from Power Automate/Azure Function when work item state changes
+#
+# This is the main orchestrator - actual logic is in templates/
 
 trigger: none # Manual/API trigger only
 
@@ -19,18 +21,9 @@ parameters:
     displayName: 'Target Repository Name'
     default: 'head-shakers'
 
+# Import shared variables
 variables:
-  - group: AI # Contains ANTHROPIC_API_KEY and GITHUB_PAT
-  - name: targetRepoPath
-    value: '$(Build.SourcesDirectory)/target'
-  - name: configRepoPath
-    value: '$(Build.SourcesDirectory)'
-  - name: nodeVersion
-    value: '20.x'
-  - name: BAIL_OUT
-    value: 'false'
-  - name: NO_CHANGES
-    value: 'false'
+  - template: templates/variables.yml
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -46,184 +39,28 @@ stages:
           # ============================================
           # PHASE 1: CHECKOUT REPOSITORIES
           # ============================================
-
-          # Checkout this repo (claude-planner-config) which contains the config
-          - checkout: self
-            path: s/config
-
-          # Checkout target repo from GitHub
-          - script: |
-              set -e
-              echo "Cloning target repository from GitHub..."
-              echo "Target path: $(targetRepoPath)"
-              git clone https://$(GITHUB_PAT)@github.com/JasonPaff/${{ parameters.targetRepo }}.git $(targetRepoPath)
-              cd $(targetRepoPath)
-              git config user.email "ai-pipeline@azure.com"
-              git config user.name "AI Pipeline"
-              echo "Clone successful. Contents:"
-              ls -la
-            displayName: 'Checkout target repo (GitHub)'
-            env:
-              GITHUB_PAT: $(GITHUB_PAT)
+          - template: templates/setup/checkout.yml
+            parameters:
+              targetRepo: ${{ parameters.targetRepo }}
 
           # ============================================
           # PHASE 2: SETUP ENVIRONMENT
           # ============================================
-
-          - task: NodeTool@0
-            inputs:
-              versionSpec: $(nodeVersion)
-            displayName: 'Install Node.js'
-
-          # Install Claude Code CLI
-          - script: |
-              echo "Installing Claude Code CLI..."
-              npm install -g @anthropic-ai/claude-code
-              claude --version
-            displayName: 'Install Claude Code CLI'
-
-          # Copy .claude config into target repo
-          - script: |
-              set -e
-              echo "Copying .claude config to target repo..."
-              echo "Source: $(configRepoPath)/.claude"
-              echo "Target: $(targetRepoPath)/"
-
-              # Debug: list source directory
-              echo "Contents of config repo:"
-              ls -la $(configRepoPath)/
-
-              if [ ! -d "$(configRepoPath)/.claude" ]; then
-                echo "##[error].claude folder not found in config repo at $(configRepoPath)/.claude"
-                echo "Make sure .claude is committed and pushed to this repository"
-                exit 1
-              fi
-
-              # Check target directory exists
-              if [ ! -d "$(targetRepoPath)" ]; then
-                echo "##[error]Target repo directory not found at $(targetRepoPath)"
-                echo "The git clone step may have failed"
-                exit 1
-              fi
-
-              echo "Target repo contents before copy:"
-              ls -la $(targetRepoPath)/
-
-              cp -rv $(configRepoPath)/.claude $(targetRepoPath)/
-              echo "Copy completed. Verifying:"
-              ls -la $(targetRepoPath)/.claude/
-            displayName: 'Copy .claude config to target repo'
+          - template: templates/setup/environment.yml
 
           # ============================================
           # PHASE 3: FETCH WORK ITEM CONTEXT
           # ============================================
-
-          - script: |
-              echo "Fetching work item details..."
-              chmod +x $(configRepoPath)/scripts/fetch-work-item.sh
-              $(configRepoPath)/scripts/fetch-work-item.sh \
-                "${{ parameters.workItemId }}" \
-                "$(System.AccessToken)" \
-                "$(Agent.TempDirectory)/work-item.json"
-              
-              # Parse and export work item fields
-              TITLE=$(jq -r '.fields["System.Title"]' $(Agent.TempDirectory)/work-item.json)
-              DESCRIPTION=$(jq -r '.fields["System.Description"] // ""' $(Agent.TempDirectory)/work-item.json | sed 's/<[^>]*>//g')
-              ACCEPTANCE_CRITERIA=$(jq -r '.fields["Microsoft.VSTS.Common.AcceptanceCriteria"] // ""' $(Agent.TempDirectory)/work-item.json | sed 's/<[^>]*>//g')
-              
-              echo "Work Item: $TITLE"
-              
-              # Save to environment file for subsequent steps
-              # Escape any existing double quotes in values, then wrap in quotes
-              echo "WORK_ITEM_TITLE=\"${TITLE//\"/\\\"}\"" >> $(Agent.TempDirectory)/work-item.env
-              echo "WORK_ITEM_DESCRIPTION=\"${DESCRIPTION//\"/\\\"}\"" >> $(Agent.TempDirectory)/work-item.env
-              echo "WORK_ITEM_ACCEPTANCE_CRITERIA=\"${ACCEPTANCE_CRITERIA//\"/\\\"}\"" >> $(Agent.TempDirectory)/work-item.env
-            displayName: 'Fetch work item details'
-            env:
-              AZURE_DEVOPS_ORG: 'jasonpaffES'
-              AZURE_DEVOPS_PROJECT: 'Head Shakers'
+          - template: templates/setup/work-item.yml
+            parameters:
+              workItemId: ${{ parameters.workItemId }}
 
           # ============================================
-          # PHASE 3.5: CLAUDE CODE DIAGNOSTICS (Global)
+          # PHASE 3.5: CLAUDE CODE DIAGNOSTICS
           # ============================================
-
-          - script: |
-              set -e
-
-              cd $(targetRepoPath)
-
-              echo "========================================"
-              echo "Claude Code Diagnostics"
-              echo "========================================"
-
-              # Verify API key is set (show first/last 4 chars only)
-              if [ -z "$ANTHROPIC_API_KEY" ]; then
-                echo "##[error]ANTHROPIC_API_KEY is not set!"
-                exit 1
-              fi
-              API_KEY_PREVIEW="${ANTHROPIC_API_KEY:0:4}...${ANTHROPIC_API_KEY: -4}"
-              echo "API Key configured: $API_KEY_PREVIEW"
-
-              # Show working directory and .claude config
-              echo "Working directory: $(pwd)"
-              echo ".claude config:"
-              ls -la .claude/ 2>/dev/null | head -5 || echo "  NOT FOUND"
-
-              # Test raw API connectivity
-              echo ""
-              echo "Testing raw API connectivity to api.anthropic.com..."
-              set +e
-              API_RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" \
-                --max-time 10 \
-                -X POST \
-                -H "Content-Type: application/json" \
-                -H "x-api-key: $ANTHROPIC_API_KEY" \
-                -H "anthropic-version: 2023-06-01" \
-                https://api.anthropic.com/v1/messages \
-                -d '{"model":"claude-sonnet-4-20250514","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}' 2>&1)
-              CURL_EXIT=$?
-              set -e
-              HTTP_CODE=$(echo "$API_RESPONSE" | grep "HTTP_CODE:" | cut -d: -f2)
-              echo "Curl exit code: $CURL_EXIT, HTTP status: $HTTP_CODE"
-              if [ "$HTTP_CODE" = "200" ]; then
-                echo "Raw API test: SUCCESS"
-              elif [ "$HTTP_CODE" = "401" ]; then
-                echo "##[error]Raw API test: AUTHENTICATION FAILED - API key may be invalid"
-                echo "Response: $(echo "$API_RESPONSE" | head -5)"
-                exit 1
-              elif [ "$HTTP_CODE" = "400" ]; then
-                echo "Raw API test: OK (400 expected for minimal test payload)"
-              else
-                echo "##[warning]Raw API test: HTTP $HTTP_CODE"
-                echo "Response: $(echo "$API_RESPONSE" | head -10)"
-              fi
-
-              # Test Claude CLI connectivity
-              echo ""
-              echo "Testing Claude Code CLI connectivity..."
-              set +e
-              timeout 30 claude --print --dangerously-skip-permissions "Respond with only the word OK" </dev/null 2>&1
-              TEST_EXIT=$?
-              set -e
-              if [ $TEST_EXIT -eq 124 ]; then
-                echo "##[error]Claude CLI connectivity test timed out after 30 seconds"
-                exit 1
-              elif [ $TEST_EXIT -ne 0 ]; then
-                echo "##[error]Claude CLI connectivity test failed with code $TEST_EXIT"
-                exit 1
-              else
-                echo "Claude CLI connectivity test: PASSED"
-              fi
-
-              echo ""
-              echo "========================================"
-              echo "All diagnostics passed - proceeding with ${{ parameters.workflowType }} workflow"
-              echo "========================================"
-            displayName: 'Claude Code Diagnostics'
-            env:
-              ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
-              CI: 'true'
-              CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
+          - template: templates/setup/diagnostics.yml
+            parameters:
+              workflowType: ${{ parameters.workflowType }}
 
           # ============================================
           # PHASE 4: RUN CLAUDE CODE (Workflow-Specific)
@@ -231,159 +68,17 @@ stages:
 
           # --- QUICK FIX WORKFLOW ---
           - ${{ if eq(parameters.workflowType, 'quick-fix') }}:
-              - script: |
-                  set -e
-                  source $(Agent.TempDirectory)/work-item.env
-
-                  cd $(targetRepoPath)
-
-                  echo "Running Claude Code quick-fix..."
-                  echo "Issue: $WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION"
-
-                  # Run quick-fix command (5 min timeout - quick fixes should be fast)
-                  # Use </dev/null to prevent stdin hanging, --print for non-interactive
-                  timeout 300 claude --print --dangerously-skip-permissions \
-                    "/quick-fix \"$WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION\"" \
-                    </dev/null 2>&1 | tee $(Agent.TempDirectory)/claude-output.txt || true
-
-                  # Check if Claude bailed out (complexity check failed)
-                  if grep -q "Quick Fix Not Appropriate" $(Agent.TempDirectory)/claude-output.txt 2>/dev/null; then
-                    echo "##vso[task.logissue type=warning]Quick fix not appropriate - issue is too complex"
-                    echo "##vso[task.setvariable variable=BAIL_OUT]true"
-                  else
-                    echo "##vso[task.setvariable variable=BAIL_OUT]false"
-                  fi
-
-                  cat $(Agent.TempDirectory)/claude-output.txt
-                displayName: 'Run Claude Code /quick-fix'
-                env:
-                  ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
-                  CI: 'true'
-                  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
+              - template: templates/workflows/quick-fix.yml
 
           # --- PLAN WORKFLOW ---
           - ${{ if eq(parameters.workflowType, 'plan') }}:
-              - script: |
-                  set -e
-                  source $(Agent.TempDirectory)/work-item.env
-
-                  cd $(targetRepoPath)
-
-                  echo "Running Claude Code plan-feature..."
-                  echo "Feature: $WORK_ITEM_TITLE"
-                  echo "Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
-
-                  # Combine title and acceptance criteria for planning
-                  PLAN_INPUT="$WORK_ITEM_TITLE"
-                  if [ -n "$WORK_ITEM_ACCEPTANCE_CRITERIA" ]; then
-                    PLAN_INPUT="$WORK_ITEM_TITLE - Acceptance Criteria: $WORK_ITEM_ACCEPTANCE_CRITERIA"
-                  fi
-
-                  echo "Full prompt: /plan-feature \"$PLAN_INPUT\""
-                  echo "Starting Claude Code at: $(date -Iseconds)"
-
-                  # Run plan-feature command with tee to show output in real-time
-                  set +e
-                  timeout 1800 claude --print --dangerously-skip-permissions "/plan-feature \"$PLAN_INPUT\"" \
-                    </dev/null 2>&1 | tee $(Agent.TempDirectory)/claude-output.txt
-                  CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
-                  set -e
-
-                  echo "Claude Code finished at: $(date -Iseconds)"
-                  echo "Claude exit code: $CLAUDE_EXIT_CODE"
-
-                  if [ $CLAUDE_EXIT_CODE -eq 124 ]; then
-                    echo "##[error]Claude Code timed out after 30 minutes"
-                    echo "Last 50 lines of output:"
-                    tail -50 $(Agent.TempDirectory)/claude-output.txt || true
-                    exit 1
-                  elif [ $CLAUDE_EXIT_CODE -ne 0 ]; then
-                    echo "##[error]Claude Code failed with exit code $CLAUDE_EXIT_CODE"
-                    cat $(Agent.TempDirectory)/claude-output.txt || true
-                    exit 1
-                  fi
-
-                  # Find the generated plan file
-                  PLAN_FILE=$(find $(targetRepoPath)/docs -name "*-implementation-plan.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
-
-                  if [ -n "$PLAN_FILE" ]; then
-                    echo "Found plan file: $PLAN_FILE"
-                    cp "$PLAN_FILE" $(Agent.TempDirectory)/implementation-plan.md
-                    echo "##vso[task.setvariable variable=PLAN_FILE]$PLAN_FILE"
-                  else
-                    echo "##[error]No plan file generated"
-                    echo "Checking docs directory:"
-                    find $(targetRepoPath)/docs -type f -name "*.md" 2>/dev/null | head -20 || echo "No markdown files found"
-                    exit 1
-                  fi
-                displayName: 'Run Claude Code /plan-feature'
-                env:
-                  ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
-                  CI: 'true'
-                  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
+              - template: templates/workflows/plan.yml
 
           # --- IMPLEMENT WORKFLOW ---
           - ${{ if eq(parameters.workflowType, 'implement') }}:
-              - script: |
-                  set -e
-                  
-                  echo "Downloading implementation plan from work item..."
-                  chmod +x $(configRepoPath)/scripts/fetch-work-item.sh
-                  
-                  # Fetch attachments from work item
-                  ATTACHMENTS_URL="https://dev.azure.com/jasonpaffES/Head%20Shakers/_apis/wit/workitems/${{ parameters.workItemId }}?api-version=7.0&\$expand=relations"
-                  
-                  curl -s -H "Authorization: Bearer $(System.AccessToken)" "$ATTACHMENTS_URL" \
-                    > $(Agent.TempDirectory)/work-item-full.json
-                  
-                  # Find and download the plan attachment
-                  PLAN_URL=$(jq -r '.relations[]? | select(.rel == "AttachedFile") | select(.attributes.name | contains("implementation-plan")) | .url' $(Agent.TempDirectory)/work-item-full.json | head -1)
-                  
-                  if [ -z "$PLAN_URL" ] || [ "$PLAN_URL" == "null" ]; then
-                    echo "##vso[task.logissue type=error]No implementation plan attachment found on work item"
-                    exit 1
-                  fi
-                  
-                  echo "Downloading plan from: $PLAN_URL"
-                  curl -s -H "Authorization: Bearer $(System.AccessToken)" "$PLAN_URL" \
-                    -o $(Agent.TempDirectory)/implementation-plan.md
-                  
-                  # Copy plan to target repo for Claude to read
-                  cp $(Agent.TempDirectory)/implementation-plan.md $(targetRepoPath)/implementation-plan.md
-                displayName: 'Download implementation plan'
-
-              - script: |
-                  set -e
-                  source $(Agent.TempDirectory)/work-item.env
-
-                  cd $(targetRepoPath)
-
-                  echo "Running Claude Code implement-plan..."
-
-                  # Run implement-plan command (60 min timeout - implementation can be lengthy)
-                  # Use </dev/null to prevent stdin hanging, --print for non-interactive
-                  set +e
-                  timeout 3600 claude --print --dangerously-skip-permissions \
-                    "/implement-plan implementation-plan.md" \
-                    </dev/null 2>&1 | tee $(Agent.TempDirectory)/claude-output.txt
-                  CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
-                  set -e
-
-                  echo "Claude exit code: $CLAUDE_EXIT_CODE"
-                  cat $(Agent.TempDirectory)/claude-output.txt
-
-                  # Clean up the plan file (don't commit it)
-                  rm -f $(targetRepoPath)/implementation-plan.md
-
-                  if [ $CLAUDE_EXIT_CODE -ne 0 ]; then
-                    echo "##[error]Claude Code failed with exit code $CLAUDE_EXIT_CODE"
-                    exit 1
-                  fi
-                displayName: 'Run Claude Code /implement-plan'
-                env:
-                  ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
-                  CI: 'true'
-                  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
+              - template: templates/workflows/implement.yml
+                parameters:
+                  workItemId: ${{ parameters.workItemId }}
 
           # ============================================
           # PHASE 5: HANDLE OUTPUTS
@@ -391,112 +86,29 @@ stages:
 
           # --- CREATE PR (quick-fix and implement) ---
           - ${{ if or(eq(parameters.workflowType, 'quick-fix'), eq(parameters.workflowType, 'implement')) }}:
-              - script: |
-                  # Skip if quick-fix bailed out
-                  if [ "$(BAIL_OUT)" == "true" ]; then
-                    echo "Skipping PR creation - quick fix bailed out"
-                    exit 0
-                  fi
-                  
-                  cd $(targetRepoPath)
-                  
-                  # Check if there are any changes
-                  if [ -z "$(git status --porcelain)" ]; then
-                    echo "##vso[task.logissue type=warning]No changes to commit"
-                    echo "##vso[task.setvariable variable=NO_CHANGES]true"
-                    exit 0
-                  fi
-                  
-                  # Create feature branch
-                  BRANCH_NAME="ai/${{ parameters.workItemId }}-${{ parameters.workflowType }}"
-                  echo "Creating branch: $BRANCH_NAME"
-                  
-                  git checkout -b "$BRANCH_NAME"
-                  git add -A
-                  git commit -m "AI ${{ parameters.workflowType }}: Work Item #${{ parameters.workItemId }}"
-                  git push origin "$BRANCH_NAME"
-                  
-                  echo "##vso[task.setvariable variable=BRANCH_NAME]$BRANCH_NAME"
-                displayName: 'Create branch and push changes'
-                condition: succeededOrFailed()
-
-              - script: |
-                  # Skip if bailed out or no changes
-                  if [ "$(BAIL_OUT)" == "true" ] || [ "$(NO_CHANGES)" == "true" ]; then
-                    echo "Skipping PR creation"
-                    exit 0
-                  fi
-
-                  chmod +x $(configRepoPath)/scripts/create-pr.sh
-                  $(configRepoPath)/scripts/create-pr.sh \
-                    "${{ parameters.workItemId }}" \
-                    "$(BRANCH_NAME)" \
-                    "${{ parameters.workflowType }}" \
-                    "$(GITHUB_PAT)" \
-                    "$(System.AccessToken)"
-                displayName: 'Create Pull Request'
-                condition: succeededOrFailed()
-                env:
-                  GITHUB_PAT: $(GITHUB_PAT)
-                  GITHUB_OWNER: 'JasonPaff'
-                  GITHUB_REPO: '${{ parameters.targetRepo }}'
-                  AZURE_DEVOPS_ORG: 'jasonpaffES'
-                  AZURE_DEVOPS_PROJECT: 'Head Shakers'
+              - template: templates/outputs/create-branch-pr.yml
+                parameters:
+                  workItemId: ${{ parameters.workItemId }}
+                  workflowType: ${{ parameters.workflowType }}
+                  targetRepo: ${{ parameters.targetRepo }}
 
           # --- ATTACH PLAN (plan workflow) ---
           - ${{ if eq(parameters.workflowType, 'plan') }}:
-              - script: |
-                  chmod +x $(configRepoPath)/scripts/attach-plan.sh
-                  $(configRepoPath)/scripts/attach-plan.sh \
-                    "${{ parameters.workItemId }}" \
-                    "$(Agent.TempDirectory)/implementation-plan.md" \
-                    "$(System.AccessToken)"
-                displayName: 'Attach plan to work item'
-                env:
-                  AZURE_DEVOPS_ORG: 'jasonpaffES'
-                  AZURE_DEVOPS_PROJECT: 'Head Shakers'
+              - template: templates/outputs/attach-plan.yml
+                parameters:
+                  workItemId: ${{ parameters.workItemId }}
 
           # --- HANDLE BAIL OUT (quick-fix only) ---
           - ${{ if eq(parameters.workflowType, 'quick-fix') }}:
-              - script: |
-                  if [ "$(BAIL_OUT)" != "true" ]; then
-                    exit 0
-                  fi
-                  
-                  echo "Quick fix bailed out - adding comment to work item"
-                  
-                  # Get the user who triggered this (from work item changed by)
-                  CHANGED_BY=$(jq -r '.fields["System.ChangedBy"].uniqueName // "unknown"' $(Agent.TempDirectory)/work-item.json)
-                  
-                  COMMENT="⚠️ **AI Quick Fix Could Not Complete**\n\nThe issue appears to be too complex for an automated quick fix.\n\n**Recommendation**: Move this item to 'AI Plan' status to generate a full implementation plan, or handle manually.\n\n_Triggered by: @<$CHANGED_BY>_"
-                  
-                  # Add comment via API
-                  curl -s -X POST \
-                    -H "Authorization: Bearer $(System.AccessToken)" \
-                    -H "Content-Type: application/json" \
-                    -d "{\"text\": \"$COMMENT\"}" \
-                    "https://dev.azure.com/jasonpaffES/Head%20Shakers/_apis/wit/workitems/${{ parameters.workItemId }}/comments?api-version=7.0-preview.3"
-                  
-                  echo "Comment added to work item"
-                displayName: 'Handle quick-fix bail out'
-                condition: eq(variables['BAIL_OUT'], 'true')
+              - template: templates/outputs/handle-bailout.yml
+                parameters:
+                  workItemId: ${{ parameters.workItemId }}
 
           # ============================================
           # PHASE 6: CLEANUP & REPORTING
           # ============================================
-
-          - script: |
-              echo "========================================"
-              echo "AI Workflow Complete"
-              echo "========================================"
-              echo "Workflow Type: ${{ parameters.workflowType }}"
-              echo "Work Item ID: ${{ parameters.workItemId }}"
-              echo "Target Repo: ${{ parameters.targetRepo }}"
-              echo ""
-              
-              if [ -f "$(Agent.TempDirectory)/claude-output.json" ]; then
-                echo "Claude Output Summary:"
-                cat $(Agent.TempDirectory)/claude-output.json | head -100
-              fi
-            displayName: 'Report results'
-            condition: always()
+          - template: templates/outputs/report.yml
+            parameters:
+              workflowType: ${{ parameters.workflowType }}
+              workItemId: ${{ parameters.workItemId }}
+              targetRepo: ${{ parameters.targetRepo }}

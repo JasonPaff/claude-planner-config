@@ -1,0 +1,65 @@
+# Create branch and pull request
+# Used by quick-fix and implement workflows
+
+parameters:
+  - name: workItemId
+    type: string
+  - name: workflowType
+    type: string
+  - name: targetRepo
+    type: string
+
+steps:
+  # Create branch and push changes
+  - script: |
+      # Skip if quick-fix bailed out
+      if [ "$(BAIL_OUT)" == "true" ]; then
+        echo "Skipping PR creation - quick fix bailed out"
+        exit 0
+      fi
+
+      cd $(targetRepoPath)
+
+      # Check if there are any changes
+      if [ -z "$(git status --porcelain)" ]; then
+        echo "##vso[task.logissue type=warning]No changes to commit"
+        echo "##vso[task.setvariable variable=NO_CHANGES]true"
+        exit 0
+      fi
+
+      # Create feature branch
+      BRANCH_NAME="ai/${{ parameters.workItemId }}-${{ parameters.workflowType }}"
+      echo "Creating branch: $BRANCH_NAME"
+
+      git checkout -b "$BRANCH_NAME"
+      git add -A
+      git commit -m "AI ${{ parameters.workflowType }}: Work Item #${{ parameters.workItemId }}"
+      git push origin "$BRANCH_NAME"
+
+      echo "##vso[task.setvariable variable=BRANCH_NAME]$BRANCH_NAME"
+    displayName: 'Create branch and push changes'
+    condition: succeededOrFailed()
+
+  # Create pull request
+  - script: |
+      # Skip if bailed out or no changes
+      if [ "$(BAIL_OUT)" == "true" ] || [ "$(NO_CHANGES)" == "true" ]; then
+        echo "Skipping PR creation"
+        exit 0
+      fi
+
+      chmod +x $(configRepoPath)/scripts/create-pr.sh
+      $(configRepoPath)/scripts/create-pr.sh \
+        "${{ parameters.workItemId }}" \
+        "$(BRANCH_NAME)" \
+        "${{ parameters.workflowType }}" \
+        "$(GITHUB_PAT)" \
+        "$(System.AccessToken)"
+    displayName: 'Create Pull Request'
+    condition: succeededOrFailed()
+    env:
+      GITHUB_PAT: $(GITHUB_PAT)
+      GITHUB_OWNER: $(githubOwner)
+      GITHUB_REPO: ${{ parameters.targetRepo }}
+      AZURE_DEVOPS_ORG: $(azureDevOpsOrg)
+      AZURE_DEVOPS_PROJECT: $(azureDevOpsProject)

@@ -1,0 +1,23 @@
+# Shared variables for AI Pipeline
+# Used by: azure-pipelines.yml
+
+variables:
+  - group: AI # Contains ANTHROPIC_API_KEY and GITHUB_PAT
+  - name: targetRepoPath
+    value: '$(Build.SourcesDirectory)/target'
+  - name: configRepoPath
+    value: '$(Build.SourcesDirectory)'
+  - name: nodeVersion
+    value: '20.x'
+  - name: BAIL_OUT
+    value: 'false'
+  - name: NO_CHANGES
+    value: 'false'
+  # Azure DevOps settings
+  - name: azureDevOpsOrg
+    value: 'jasonpaffES'
+  - name: azureDevOpsProject
+    value: 'Head Shakers'
+  # GitHub settings
+  - name: githubOwner
+    value: 'JasonPaff'
