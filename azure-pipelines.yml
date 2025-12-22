@@ -152,30 +152,32 @@ stages:
               - script: |
                   set -e
                   source $(Agent.TempDirectory)/work-item.env
-                  
+
                   cd $(targetRepoPath)
-                  
+
                   echo "Running Claude Code quick-fix..."
                   echo "Issue: $WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION"
-                  
+
                   # Run quick-fix command (5 min timeout - quick fixes should be fast)
-                  timeout 300 claude -p "/quick-fix \"$WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION\"" \
-                    --dangerously-skip-permissions \
-                    --output-format json \
-                    > $(Agent.TempDirectory)/claude-output.json 2>&1 || true
-                  
+                  # Use </dev/null to prevent stdin hanging, --print for non-interactive
+                  timeout 300 claude --print --dangerously-skip-permissions \
+                    "/quick-fix \"$WORK_ITEM_TITLE - $WORK_ITEM_DESCRIPTION\"" \
+                    </dev/null 2>&1 | tee $(Agent.TempDirectory)/claude-output.txt || true
+
                   # Check if Claude bailed out (complexity check failed)
-                  if grep -q "Quick Fix Not Appropriate" $(Agent.TempDirectory)/claude-output.json; then
+                  if grep -q "Quick Fix Not Appropriate" $(Agent.TempDirectory)/claude-output.txt 2>/dev/null; then
                     echo "##vso[task.logissue type=warning]Quick fix not appropriate - issue is too complex"
                     echo "##vso[task.setvariable variable=BAIL_OUT]true"
                   else
                     echo "##vso[task.setvariable variable=BAIL_OUT]false"
                   fi
-                  
-                  cat $(Agent.TempDirectory)/claude-output.json
+
+                  cat $(Agent.TempDirectory)/claude-output.txt
                 displayName: 'Run Claude Code /quick-fix'
                 env:
                   ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+                  CI: 'true'
+                  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
 
           # --- PLAN WORKFLOW ---
           - ${{ if eq(parameters.workflowType, 'plan') }}:
@@ -236,10 +238,11 @@ stages:
                     echo "Response: $(echo "$API_RESPONSE" | head -10)"
                   fi
 
-                  # Quick Claude CLI connectivity test with timeout (15 seconds max)
+                  # Quick Claude CLI connectivity test with timeout (30 seconds max)
+                  # Use </dev/null to prevent stdin hanging and --print for explicit non-interactive mode
                   echo "Testing Claude Code CLI connectivity..."
                   set +e
-                  timeout 15 claude -p "Respond with only: OK" --dangerously-skip-permissions 2>&1
+                  timeout 30 claude --print --dangerously-skip-permissions "Respond with only the word OK" </dev/null 2>&1
                   TEST_EXIT=$?
                   set -e
                   if [ $TEST_EXIT -eq 124 ]; then
@@ -253,11 +256,10 @@ stages:
                   echo "Starting Claude Code at: $(date -Iseconds)"
 
                   # Run plan-feature command with tee to show output in real-time
-                  # Use set +e to capture exit code without failing immediately
+                  # Use </dev/null to prevent stdin hanging, --print for explicit non-interactive
                   set +e
-                  timeout 1800 claude -p "/plan-feature \"$PLAN_INPUT\"" \
-                    --dangerously-skip-permissions \
-                    2>&1 | tee $(Agent.TempDirectory)/claude-output.txt
+                  timeout 1800 claude --print --dangerously-skip-permissions "/plan-feature \"$PLAN_INPUT\"" \
+                    </dev/null 2>&1 | tee $(Agent.TempDirectory)/claude-output.txt
                   CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
                   set -e
 
@@ -328,24 +330,35 @@ stages:
               - script: |
                   set -e
                   source $(Agent.TempDirectory)/work-item.env
-                  
+
                   cd $(targetRepoPath)
-                  
+
                   echo "Running Claude Code implement-plan..."
-                  
+
                   # Run implement-plan command (60 min timeout - implementation can be lengthy)
-                  timeout 3600 claude -p "/implement-plan implementation-plan.md" \
-                    --dangerously-skip-permissions \
-                    --output-format json \
-                    > $(Agent.TempDirectory)/claude-output.json 2>&1
-                  
-                  cat $(Agent.TempDirectory)/claude-output.json
-                  
+                  # Use </dev/null to prevent stdin hanging, --print for non-interactive
+                  set +e
+                  timeout 3600 claude --print --dangerously-skip-permissions \
+                    "/implement-plan implementation-plan.md" \
+                    </dev/null 2>&1 | tee $(Agent.TempDirectory)/claude-output.txt
+                  CLAUDE_EXIT_CODE=${PIPESTATUS[0]}
+                  set -e
+
+                  echo "Claude exit code: $CLAUDE_EXIT_CODE"
+                  cat $(Agent.TempDirectory)/claude-output.txt
+
                   # Clean up the plan file (don't commit it)
                   rm -f $(targetRepoPath)/implementation-plan.md
+
+                  if [ $CLAUDE_EXIT_CODE -ne 0 ]; then
+                    echo "##[error]Claude Code failed with exit code $CLAUDE_EXIT_CODE"
+                    exit 1
+                  fi
                 displayName: 'Run Claude Code /implement-plan'
                 env:
                   ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+                  CI: 'true'
+                  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
 
           # ============================================
           # PHASE 5: HANDLE OUTPUTS
