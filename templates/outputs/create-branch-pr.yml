@@ -12,6 +12,8 @@ parameters:
 steps:
   # Create branch and push changes
   - script: |
+      set -e  # Exit on any error
+
       # Skip if quick-fix bailed out
       if [ "$(BAIL_OUT)" == "true" ]; then
         echo "Skipping PR creation - quick fix bailed out"
@@ -34,18 +36,41 @@ steps:
       git checkout -b "$BRANCH_NAME"
       git add -A
       git commit -m "AI ${{ parameters.workflowType }}: Work Item #${{ parameters.workItemId }}"
-      git push origin "$BRANCH_NAME"
+
+      # Push with explicit error handling
+      echo "Pushing branch to origin..."
+      if ! git push origin "$BRANCH_NAME" 2>&1; then
+        echo "##vso[task.logissue type=error]Failed to push branch. Check GitHub PAT has 'Contents: Read and write' permission."
+        echo "##vso[task.setvariable variable=PUSH_FAILED]true"
+        exit 1
+      fi
 
       echo "##vso[task.setvariable variable=BRANCH_NAME]$BRANCH_NAME"
+      echo "##vso[task.setvariable variable=PUSH_FAILED]false"
+      echo "Branch pushed successfully"
     displayName: 'Create branch and push changes'
-    condition: succeededOrFailed()
 
   # Create pull request
   - script: |
-      # Skip if bailed out or no changes
-      if [ "$(BAIL_OUT)" == "true" ] || [ "$(NO_CHANGES)" == "true" ]; then
-        echo "Skipping PR creation"
+      # Skip if bailed out, no changes, or push failed
+      if [ "$(BAIL_OUT)" == "true" ]; then
+        echo "Skipping PR creation - quick fix bailed out"
         exit 0
+      fi
+
+      if [ "$(NO_CHANGES)" == "true" ]; then
+        echo "Skipping PR creation - no changes to commit"
+        exit 0
+      fi
+
+      if [ "$(PUSH_FAILED)" == "true" ]; then
+        echo "##vso[task.logissue type=error]Skipping PR creation - branch push failed"
+        exit 1
+      fi
+
+      if [ -z "$(BRANCH_NAME)" ]; then
+        echo "##vso[task.logissue type=error]Skipping PR creation - no branch name set (push may have failed)"
+        exit 1
       fi
 
       chmod +x $(configRepoPath)/scripts/create-pr.sh
@@ -56,7 +81,7 @@ steps:
         "$(GITHUB_PAT)" \
         "$(System.AccessToken)"
     displayName: 'Create Pull Request'
-    condition: succeededOrFailed()
+    condition: succeeded()
     env:
       GITHUB_PAT: $(GITHUB_PAT)
       GITHUB_OWNER: $(githubOwner)

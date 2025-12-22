@@ -70,8 +70,8 @@ case "$WORKFLOW_TYPE" in
     ;;
 esac
 
-# Create PR using GitHub API
-PR_RESPONSE=$(curl -s -X POST \
+# Create PR using GitHub API with HTTP status capture
+HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
   -H "Authorization: token $GITHUB_TOKEN" \
   -H "Accept: application/vnd.github.v3+json" \
   -d "$(jq -n \
@@ -82,11 +82,52 @@ PR_RESPONSE=$(curl -s -X POST \
     '{title: $title, body: $body, head: $head, base: $base}')" \
   "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/pulls")
 
+# Extract HTTP status code (last line) and response body
+HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tail -n1)
+PR_RESPONSE=$(echo "$HTTP_RESPONSE" | sed '$d')
+
+# Check HTTP status first
+if [ "$HTTP_STATUS" -ne 201 ]; then
+  echo "Error: GitHub API returned HTTP $HTTP_STATUS"
+
+  # Parse error message if available
+  ERROR_MSG=$(echo "$PR_RESPONSE" | jq -r '.message // "Unknown error"')
+
+  case "$HTTP_STATUS" in
+    401)
+      echo "Authentication failed. Check that GITHUB_PAT is valid and not expired."
+      ;;
+    403)
+      echo "Permission denied. Check that GITHUB_PAT has 'Pull requests: Read and write' permission."
+      echo "Token also needs 'Contents: Read and write' to push branches."
+      ;;
+    404)
+      echo "Repository not found or branch doesn't exist."
+      echo "Verify repository: $GITHUB_OWNER/$GITHUB_REPO"
+      echo "Verify branch '$BRANCH_NAME' was pushed successfully."
+      ;;
+    422)
+      echo "Validation failed. This often means:"
+      echo "  - A PR already exists for this branch"
+      echo "  - The branch doesn't exist on remote"
+      echo "  - The base branch '$TARGET_BRANCH' doesn't exist"
+      ;;
+    *)
+      echo "Unexpected error occurred."
+      ;;
+  esac
+
+  echo ""
+  echo "GitHub API response:"
+  echo "$PR_RESPONSE" | jq . 2>/dev/null || echo "$PR_RESPONSE"
+  exit 1
+fi
+
 PR_NUMBER=$(echo "$PR_RESPONSE" | jq -r '.number')
 PR_URL=$(echo "$PR_RESPONSE" | jq -r '.html_url')
 
 if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" == "null" ]; then
-  echo "Error: Failed to create pull request"
+  echo "Error: PR created but response parsing failed"
   echo "$PR_RESPONSE" | jq .
   exit 1
 fi
@@ -115,13 +156,20 @@ AI pipeline has created a pull request for this work item.
 1. Review the pull request on GitHub
 2. Approve and merge when ready"
 
-  curl -s -X POST \
+  COMMENT_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
     -H "Authorization: Bearer $AZURE_TOKEN" \
     -H "Content-Type: application/json" \
     -d "$(jq -n --arg text "$COMMENT_TEXT" '{text: $text}')" \
-    "$COMMENT_URL" > /dev/null
+    "$COMMENT_URL")
 
-  echo "Comment added to work item"
+  COMMENT_STATUS=$(echo "$COMMENT_RESPONSE" | tail -n1)
+
+  if [ "$COMMENT_STATUS" -ge 200 ] && [ "$COMMENT_STATUS" -lt 300 ]; then
+    echo "Comment added to work item"
+  else
+    echo "Warning: Failed to add comment to work item (HTTP $COMMENT_STATUS)"
+    echo "This is non-fatal - PR was created successfully"
+  fi
 fi
 
 # Output PR number for pipeline use
