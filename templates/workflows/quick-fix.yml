@@ -22,10 +22,10 @@ steps:
 
       echo "Full context: $ISSUE_CONTEXT"
 
-      # Run quick-fix command (5 min timeout - quick fixes should be fast)
+      # Run quick-fix command (10 min timeout - quick fixes should be fast)
       # Use stream-json for real-time output, pipe through processor for milestone detection
       chmod +x $(configRepoPath)/scripts/stream-processor.sh
-      timeout 300 claude --output-format stream-json --verbose --dangerously-skip-permissions \
+      timeout 600 claude --output-format stream-json --verbose --dangerously-skip-permissions \
         "/quick-fix \"$ISSUE_CONTEXT\"" \
         </dev/null 2>&1 | \
         tee $(Agent.TempDirectory)/raw-stream.jsonl | \
