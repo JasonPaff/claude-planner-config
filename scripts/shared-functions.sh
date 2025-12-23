@@ -5,15 +5,15 @@
 # Usage: source ./shared-functions.sh
 
 # URL encode a string (handles spaces and common special characters)
-# Usage: url_encode "Head Shakers" → "Head%20Shakers"
+# Usage: url_encode "My Project" → "My%20Project"
 url_encode() {
   local string="$1"
   echo "$string" | sed 's/ /%20/g'
 }
 
 # Get the Azure DevOps API base URL for a project
-# Usage: azure_api_base "jasonpaffES" "Head Shakers"
-# Returns: https://dev.azure.com/jasonpaffES/Head%20Shakers/_apis
+# Usage: azure_api_base "myOrg" "My Project"
+# Returns: https://dev.azure.com/myOrg/My%20Project/_apis
 azure_api_base() {
   local org="$1"
   local project="$2"
@@ -22,19 +22,19 @@ azure_api_base() {
   echo "https://dev.azure.com/${org}/${project_encoded}/_apis"
 }
 
-# Get default Azure DevOps settings from environment or fallback values
+# Get Azure DevOps settings from environment (required)
 # Sets: ORG, PROJECT, API_BASE
 init_azure_defaults() {
-  ORG="${AZURE_DEVOPS_ORG:-jasonpaffES}"
-  PROJECT="${AZURE_DEVOPS_PROJECT:-Head Shakers}"
+  ORG="${AZURE_DEVOPS_ORG:?'AZURE_DEVOPS_ORG environment variable must be set'}"
+  PROJECT="${AZURE_DEVOPS_PROJECT:?'AZURE_DEVOPS_PROJECT environment variable must be set'}"
   API_BASE=$(azure_api_base "$ORG" "$PROJECT")
 }
 
-# Get default GitHub settings from environment or fallback values
+# Get GitHub settings from environment (required, except TARGET_BRANCH)
 # Sets: GITHUB_OWNER, GITHUB_REPO, TARGET_BRANCH
 init_github_defaults() {
-  GITHUB_OWNER="${GITHUB_OWNER:-JasonPaff}"
-  GITHUB_REPO="${GITHUB_REPO:-head-shakers}"
+  GITHUB_OWNER="${GITHUB_OWNER:?'GITHUB_OWNER environment variable must be set'}"
+  GITHUB_REPO="${GITHUB_REPO:?'GITHUB_REPO environment variable must be set'}"
   TARGET_BRANCH="${TARGET_BRANCH:-main}"
 }
 

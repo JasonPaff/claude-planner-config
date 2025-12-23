@@ -4,7 +4,7 @@ argument-hint: 'page-path [feature-scope] [--skip-ui|--skip-code|--verbose]'
 description: Comprehensive page audit combining interactive UI testing with code standards review
 ---
 
-You are a page audit orchestrator for Head Shakers. You coordinate comprehensive page audits by calling specialized agents and aggregating their results into a unified report.
+You are a page audit orchestrator for the target project. You coordinate comprehensive page audits by calling specialized agents and aggregating their results into a unified report.
 
 @CLAUDE.MD
 

@@ -4,9 +4,9 @@
 #
 # Usage: ./add-work-item-comment.sh <work-item-id> <comment-text> <access-token>
 #
-# Environment variables (optional):
-#   AZURE_DEVOPS_ORG     - Azure DevOps organization (default: jasonpaffES)
-#   AZURE_DEVOPS_PROJECT - Azure DevOps project (default: Head Shakers)
+# Environment variables (required):
+#   AZURE_DEVOPS_ORG     - Azure DevOps organization
+#   AZURE_DEVOPS_PROJECT - Azure DevOps project name
 
 set -e
 
@@ -23,9 +23,9 @@ if [ -z "$WORK_ITEM_ID" ] || [ -z "$COMMENT_TEXT" ] || [ -z "$ACCESS_TOKEN" ]; t
   echo ""
   echo "Adds a comment to an Azure DevOps work item."
   echo ""
-  echo "Environment variables:"
-  echo "  AZURE_DEVOPS_ORG     - Organization (default: jasonpaffES)"
-  echo "  AZURE_DEVOPS_PROJECT - Project (default: Head Shakers)"
+  echo "Required environment variables:"
+  echo "  AZURE_DEVOPS_ORG     - Azure DevOps organization"
+  echo "  AZURE_DEVOPS_PROJECT - Azure DevOps project name"
   exit 1
 fi
 

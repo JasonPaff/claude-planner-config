@@ -4,6 +4,10 @@
 parameters:
   - name: workItemId
     type: string
+  - name: azureDevOpsOrg
+    type: string
+  - name: azureDevOpsProject
+    type: string
 
 steps:
   - script: |
@@ -28,5 +32,5 @@ steps:
     displayName: 'Handle quick-fix bail out'
     condition: eq(variables['BAIL_OUT'], 'true')
     env:
-      AZURE_DEVOPS_ORG: $(azureDevOpsOrg)
-      AZURE_DEVOPS_PROJECT: $(azureDevOpsProject)
+      AZURE_DEVOPS_ORG: ${{ parameters.azureDevOpsOrg }}
+      AZURE_DEVOPS_PROJECT: ${{ parameters.azureDevOpsProject }}

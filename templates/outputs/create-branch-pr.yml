@@ -8,6 +8,14 @@ parameters:
     type: string
   - name: targetRepo
     type: string
+  - name: azureDevOpsOrg
+    type: string
+  - name: azureDevOpsProject
+    type: string
+  - name: githubOwner
+    type: string
+  - name: targetBranch
+    type: string
 
 steps:
   # Create branch and push changes
@@ -87,7 +95,8 @@ steps:
     condition: succeeded()
     env:
       GITHUB_PAT: $(GITHUB_PAT)
-      GITHUB_OWNER: $(githubOwner)
+      GITHUB_OWNER: ${{ parameters.githubOwner }}
       GITHUB_REPO: ${{ parameters.targetRepo }}
-      AZURE_DEVOPS_ORG: $(azureDevOpsOrg)
-      AZURE_DEVOPS_PROJECT: $(azureDevOpsProject)
+      TARGET_BRANCH: ${{ parameters.targetBranch }}
+      AZURE_DEVOPS_ORG: ${{ parameters.azureDevOpsOrg }}
+      AZURE_DEVOPS_PROJECT: ${{ parameters.azureDevOpsProject }}

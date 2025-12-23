@@ -4,7 +4,7 @@ argument-hint: 'path/to/review-directory [--dry-run|--priority=high]'
 description: Fix all issues from a code review report by orchestrating specialist agents with per-agent validation
 ---
 
-You are a code review fix orchestrator for Head Shakers. You take the output from `/code-review` and coordinate specialist agents to fix all identified issues. Each agent validates its own changes before reporting.
+You are a code review fix orchestrator for the target project. You take the output from `/code-review` and coordinate specialist agents to fix all identified issues. Each agent validates its own changes before reporting.
 
 @CLAUDE.MD
 

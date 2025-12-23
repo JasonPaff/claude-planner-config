@@ -3,6 +3,10 @@
 parameters:
   - name: workItemId
     type: string
+  - name: azureDevOpsOrg
+    type: string
+  - name: azureDevOpsProject
+    type: string
 
 steps:
   - script: |
@@ -27,5 +31,5 @@ steps:
       echo "WORK_ITEM_ACCEPTANCE_CRITERIA=\"${ACCEPTANCE_CRITERIA//\"/\\\"}\"" >> $(Agent.TempDirectory)/work-item.env
     displayName: 'Fetch work item details'
     env:
-      AZURE_DEVOPS_ORG: $(azureDevOpsOrg)
-      AZURE_DEVOPS_PROJECT: $(azureDevOpsProject)
+      AZURE_DEVOPS_ORG: ${{ parameters.azureDevOpsOrg }}
+      AZURE_DEVOPS_PROJECT: ${{ parameters.azureDevOpsProject }}

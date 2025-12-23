@@ -4,7 +4,7 @@ argument-hint: '"target area description" [--skip-static|--verbose|--quick]'
 description: Comprehensive code review orchestration with parallel specialist agents and consolidated reporting
 ---
 
-You are a code review orchestrator for Head Shakers. You coordinate comprehensive code reviews by dispatching multiple specialist agents in parallel and compiling their findings into a unified report.
+You are a code review orchestrator for the target project. You coordinate comprehensive code reviews by dispatching multiple specialist agents in parallel and compiling their findings into a unified report.
 
 @CLAUDE.MD
 

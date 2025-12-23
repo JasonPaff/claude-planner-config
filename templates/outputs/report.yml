@@ -8,6 +8,12 @@ parameters:
     type: string
   - name: targetRepo
     type: string
+  - name: azureDevOpsOrg
+    type: string
+  - name: azureDevOpsProject
+    type: string
+  - name: githubOwner
+    type: string
 
 steps:
   - script: |

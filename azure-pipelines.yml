@@ -16,10 +16,22 @@ parameters:
       - quick-fix
       - plan
       - implement
+  - name: azureDevOpsOrg
+    type: string
+    displayName: 'Azure DevOps Organization'
+  - name: azureDevOpsProject
+    type: string
+    displayName: 'Azure DevOps Project Name'
+  - name: githubOwner
+    type: string
+    displayName: 'GitHub Repository Owner'
   - name: targetRepo
     type: string
     displayName: 'Target Repository Name'
-    default: 'head-shakers'
+  - name: targetBranch
+    type: string
+    displayName: 'Target Branch for PR'
+    default: 'main'
 
 # Import shared variables
 variables:
@@ -54,6 +66,8 @@ stages:
           - template: templates/setup/work-item.yml
             parameters:
               workItemId: ${{ parameters.workItemId }}
+              azureDevOpsOrg: ${{ parameters.azureDevOpsOrg }}
+              azureDevOpsProject: ${{ parameters.azureDevOpsProject }}
 
           # ============================================
           # PHASE 3.5: CLAUDE CODE DIAGNOSTICS
@@ -91,18 +105,26 @@ stages:
                   workItemId: ${{ parameters.workItemId }}
                   workflowType: ${{ parameters.workflowType }}
                   targetRepo: ${{ parameters.targetRepo }}
+                  azureDevOpsOrg: ${{ parameters.azureDevOpsOrg }}
+                  azureDevOpsProject: ${{ parameters.azureDevOpsProject }}
+                  githubOwner: ${{ parameters.githubOwner }}
+                  targetBranch: ${{ parameters.targetBranch }}
 
           # --- ATTACH PLAN (plan workflow) ---
           - ${{ if eq(parameters.workflowType, 'plan') }}:
               - template: templates/outputs/attach-plan.yml
                 parameters:
                   workItemId: ${{ parameters.workItemId }}
+                  azureDevOpsOrg: ${{ parameters.azureDevOpsOrg }}
+                  azureDevOpsProject: ${{ parameters.azureDevOpsProject }}
 
           # --- HANDLE BAIL OUT (quick-fix only) ---
           - ${{ if eq(parameters.workflowType, 'quick-fix') }}:
               - template: templates/outputs/handle-bailout.yml
                 parameters:
                   workItemId: ${{ parameters.workItemId }}
+                  azureDevOpsOrg: ${{ parameters.azureDevOpsOrg }}
+                  azureDevOpsProject: ${{ parameters.azureDevOpsProject }}
 
           # ============================================
           # PHASE 6: CLEANUP & REPORTING
@@ -112,3 +134,6 @@ stages:
               workflowType: ${{ parameters.workflowType }}
               workItemId: ${{ parameters.workItemId }}
               targetRepo: ${{ parameters.targetRepo }}
+              azureDevOpsOrg: ${{ parameters.azureDevOpsOrg }}
+              azureDevOpsProject: ${{ parameters.azureDevOpsProject }}
+              githubOwner: ${{ parameters.githubOwner }}

@@ -4,6 +4,10 @@
 parameters:
   - name: workItemId
     type: string
+  - name: azureDevOpsOrg
+    type: string
+  - name: azureDevOpsProject
+    type: string
 
 steps:
   - script: |
@@ -14,5 +18,5 @@ steps:
         "$(System.AccessToken)"
     displayName: 'Attach plan to work item'
     env:
-      AZURE_DEVOPS_ORG: $(azureDevOpsOrg)
-      AZURE_DEVOPS_PROJECT: $(azureDevOpsProject)
+      AZURE_DEVOPS_ORG: ${{ parameters.azureDevOpsOrg }}
+      AZURE_DEVOPS_PROJECT: ${{ parameters.azureDevOpsProject }}

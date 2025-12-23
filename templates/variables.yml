@@ -13,14 +13,8 @@ variables:
     value: 'false'
   - name: NO_CHANGES
     value: 'false'
-  # Azure DevOps settings
-  - name: azureDevOpsOrg
-    value: 'jasonpaffES'
-  - name: azureDevOpsProject
-    value: 'Tester'
-  # GitHub settings
-  - name: githubOwner
-    value: 'JasonPaff'
+  # Note: azureDevOpsOrg, azureDevOpsProject, and githubOwner
+  # are now required pipeline parameters (no defaults)
   # Workflow timeout settings (in seconds)
   - name: quickFixTimeout
     value: '600'      # 10 minutes - quick fixes should be fast
