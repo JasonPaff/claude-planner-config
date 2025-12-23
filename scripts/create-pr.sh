@@ -84,11 +84,46 @@ HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tail -n1)
 PR_RESPONSE=$(echo "$HTTP_RESPONSE" | sed '$d')
 
 # Check HTTP status first
-if [ "$HTTP_STATUS" -ne 201 ]; then
-  echo "Error: GitHub API returned HTTP $HTTP_STATUS"
+if [ "$HTTP_STATUS" -eq 201 ]; then
+  # PR created successfully
+  PR_NUMBER=$(echo "$PR_RESPONSE" | jq -r '.number')
+  PR_URL=$(echo "$PR_RESPONSE" | jq -r '.html_url')
+  echo "Pull Request created successfully!"
 
-  # Parse error message if available
-  ERROR_MSG=$(echo "$PR_RESPONSE" | jq -r '.message // "Unknown error"')
+elif [ "$HTTP_STATUS" -eq 422 ]; then
+  # Check if PR already exists (this is fine - we force-pushed so it has new commits)
+  if echo "$PR_RESPONSE" | jq -r '.errors[]?.message' 2>/dev/null | grep -q "pull request already exists"; then
+    echo "PR already exists for this branch - finding existing PR..."
+
+    # Get existing PR for this branch
+    EXISTING_PR=$(curl -s \
+      -H "Authorization: token $GITHUB_TOKEN" \
+      -H "Accept: application/vnd.github.v3+json" \
+      "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/pulls?head=$GITHUB_OWNER:$BRANCH_NAME&state=open")
+
+    PR_NUMBER=$(echo "$EXISTING_PR" | jq -r '.[0].number')
+    PR_URL=$(echo "$EXISTING_PR" | jq -r '.[0].html_url')
+
+    if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" == "null" ]; then
+      echo "Error: Could not find existing PR"
+      echo "$EXISTING_PR" | jq .
+      exit 1
+    fi
+
+    echo "Found existing PR #$PR_NUMBER - branch was updated with new commits"
+  else
+    echo "Error: GitHub API returned HTTP 422"
+    echo "Validation failed. This often means:"
+    echo "  - The branch doesn't exist on remote"
+    echo "  - The base branch '$TARGET_BRANCH' doesn't exist"
+    echo ""
+    echo "GitHub API response:"
+    echo "$PR_RESPONSE" | jq . 2>/dev/null || echo "$PR_RESPONSE"
+    exit 1
+  fi
+
+else
+  echo "Error: GitHub API returned HTTP $HTTP_STATUS"
 
   case "$HTTP_STATUS" in
     401)
@@ -103,12 +138,6 @@ if [ "$HTTP_STATUS" -ne 201 ]; then
       echo "Verify repository: $GITHUB_OWNER/$GITHUB_REPO"
       echo "Verify branch '$BRANCH_NAME' was pushed successfully."
       ;;
-    422)
-      echo "Validation failed. This often means:"
-      echo "  - A PR already exists for this branch"
-      echo "  - The branch doesn't exist on remote"
-      echo "  - The base branch '$TARGET_BRANCH' doesn't exist"
-      ;;
     *)
       echo "Unexpected error occurred."
       ;;
@@ -120,17 +149,13 @@ if [ "$HTTP_STATUS" -ne 201 ]; then
   exit 1
 fi
 
-PR_NUMBER=$(echo "$PR_RESPONSE" | jq -r '.number')
-PR_URL=$(echo "$PR_RESPONSE" | jq -r '.html_url')
-
 if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" == "null" ]; then
-  echo "Error: PR created but response parsing failed"
+  echo "Error: PR operation completed but response parsing failed"
   echo "$PR_RESPONSE" | jq .
   exit 1
 fi
 
 echo "----------------------------------------"
-echo "Pull Request created successfully!"
 echo "PR #$PR_NUMBER"
 echo "URL: $PR_URL"
 echo "----------------------------------------"
