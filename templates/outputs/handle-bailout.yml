@@ -13,23 +13,16 @@ steps:
 
       echo "Quick fix bailed out - adding comment to work item"
 
-      # Get the user who triggered this (from work item changed by)
       CHANGED_BY=$(jq -r '.fields["System.ChangedBy"].uniqueName // "unknown"' $(Agent.TempDirectory)/work-item.json)
 
-      # Build comment using heredoc to avoid YAML parsing issues
-      COMMENT=$(cat <<'EOF'
-AI QUICK FIX COULD NOT COMPLETE
+      COMMENT="AI QUICK FIX COULD NOT COMPLETE
 
-The issue appears to be too complex for an automated quick fix.
+      The issue appears to be too complex for an automated quick fix.
 
-Recommendation: Move this item to 'AI Plan' status to generate a full implementation plan, or handle manually.
-EOF
-      )
-      COMMENT="${COMMENT}
+      Recommendation - Move this item to AI Plan status to generate a full implementation plan, or handle manually.
 
-Triggered by: ${CHANGED_BY}"
+      Triggered by - ${CHANGED_BY}"
 
-      # Use the reusable comment script
       chmod +x $(configRepoPath)/scripts/add-work-item-comment.sh
       $(configRepoPath)/scripts/add-work-item-comment.sh "${{ parameters.workItemId }}" "$COMMENT" "$(System.AccessToken)"
     displayName: 'Handle quick-fix bail out'
