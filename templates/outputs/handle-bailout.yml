@@ -16,13 +16,18 @@ steps:
       # Get the user who triggered this (from work item changed by)
       CHANGED_BY=$(jq -r '.fields["System.ChangedBy"].uniqueName // "unknown"' $(Agent.TempDirectory)/work-item.json)
 
-      COMMENT="AI QUICK FIX COULD NOT COMPLETE
+      # Build comment using heredoc to avoid YAML parsing issues
+      COMMENT=$(cat <<'EOF'
+AI QUICK FIX COULD NOT COMPLETE
 
 The issue appears to be too complex for an automated quick fix.
 
 Recommendation: Move this item to 'AI Plan' status to generate a full implementation plan, or handle manually.
+EOF
+      )
+      COMMENT="${COMMENT}
 
-Triggered by: $CHANGED_BY"
+Triggered by: ${CHANGED_BY}"
 
       # Use the reusable comment script
       chmod +x $(configRepoPath)/scripts/add-work-item-comment.sh
