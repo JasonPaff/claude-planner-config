@@ -4,6 +4,8 @@
 parameters:
   - name: targetRepo
     type: string
+  - name: githubOwner
+    type: string
 
 steps:
   # Checkout this repo (claude-planner-config) which contains the config
@@ -15,7 +17,7 @@ steps:
       set -e
       echo "Cloning target repository from GitHub..."
       echo "Target path: $(targetRepoPath)"
-      git clone https://$(GITHUB_PAT)@github.com/$(githubOwner)/${{ parameters.targetRepo }}.git $(targetRepoPath)
+      git clone https://$(GITHUB_PAT)@github.com/${{ parameters.githubOwner }}/${{ parameters.targetRepo }}.git $(targetRepoPath)
       cd $(targetRepoPath)
       git config user.email "ai-pipeline@azure.com"
       git config user.name "AI Pipeline"

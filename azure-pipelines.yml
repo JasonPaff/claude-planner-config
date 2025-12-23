@@ -54,6 +54,7 @@ stages:
           - template: templates/setup/checkout.yml
             parameters:
               targetRepo: ${{ parameters.targetRepo }}
+              githubOwner: ${{ parameters.githubOwner }}
 
           # ============================================
           # PHASE 2: SETUP ENVIRONMENT
