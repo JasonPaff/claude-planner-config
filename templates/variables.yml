@@ -17,7 +17,7 @@ variables:
   - name: azureDevOpsOrg
     value: 'jasonpaffES'
   - name: azureDevOpsProject
-    value: 'Head Shakers'
+    value: 'Tester'
   # GitHub settings
   - name: githubOwner
     value: 'JasonPaff'
