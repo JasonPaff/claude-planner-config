@@ -10,7 +10,7 @@ This is a configuration repository for AI-powered DevOps automation. It contains
 - **Claude Code skills, commands, and agents** that are copied into target repositories during pipeline execution
 - **Shell scripts** for Azure DevOps and GitHub integration
 
-The `.claude/` configuration is designed to be deployed to other repositories (primarily `head-shakers`) where the actual development happens.
+The `.claude/` configuration is designed to be deployed to target repositories where the actual development happens.
 
 ## Architecture
 
@@ -115,8 +115,8 @@ Skills define domain conventions and are auto-loaded by specialists:
 
 ## Pipeline Environment
 
-- **Target repository**: GitHub (`JasonPaff/head-shakers` by default)
-- **Work item source**: Azure DevOps (`jasonpaffES/Head Shakers`)
+- **Target repository**: Specified via `targetRepo` and `githubOwner` parameters
+- **Work item source**: Specified via `azureDevOpsOrg` and `azureDevOpsProject` parameters
 - **Required secrets**: `ANTHROPIC_API_KEY`, `GITHUB_PAT` (in Azure DevOps variable group `AI`)
 - **Platform**: `ubuntu-latest`
 - **Node version**: 20.x
