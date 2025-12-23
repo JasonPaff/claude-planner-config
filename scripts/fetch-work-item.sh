@@ -6,42 +6,39 @@
 
 set -e
 
+# Source shared functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/shared-functions.sh"
+
 WORK_ITEM_ID="$1"
 ACCESS_TOKEN="$2"
 OUTPUT_FILE="$3"
-
-# Defaults from environment or fallback
-ORG="${AZURE_DEVOPS_ORG:-jasonpaffES}"
-PROJECT="${AZURE_DEVOPS_PROJECT:-Head Shakers}"
-
-# URL encode the project name
-PROJECT_ENCODED=$(echo "$PROJECT" | sed 's/ /%20/g')
 
 if [ -z "$WORK_ITEM_ID" ] || [ -z "$ACCESS_TOKEN" ] || [ -z "$OUTPUT_FILE" ]; then
   echo "Usage: $0 <work-item-id> <access-token> <output-file>"
   exit 1
 fi
 
+# Initialize Azure defaults (sets ORG, PROJECT, API_BASE)
+init_azure_defaults
+
 echo "Fetching work item #$WORK_ITEM_ID from $ORG/$PROJECT..."
 
 # Fetch work item with all fields
-API_URL="https://dev.azure.com/$ORG/$PROJECT_ENCODED/_apis/wit/workitems/$WORK_ITEM_ID?api-version=7.0"
+API_URL="${API_BASE}/wit/workitems/$WORK_ITEM_ID?api-version=7.0"
 
 HTTP_STATUS=$(curl -s -w "%{http_code}" -o "$OUTPUT_FILE" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   "$API_URL")
 
-if [ "$HTTP_STATUS" != "200" ]; then
-  echo "Error: Failed to fetch work item. HTTP Status: $HTTP_STATUS"
+if ! validate_http_status "$HTTP_STATUS" "200" "Fetch work item"; then
   cat "$OUTPUT_FILE"
   exit 1
 fi
 
 # Validate JSON
-if ! jq empty "$OUTPUT_FILE" 2>/dev/null; then
-  echo "Error: Invalid JSON response"
-  cat "$OUTPUT_FILE"
+if ! validate_json "$OUTPUT_FILE" "work item response"; then
   exit 1
 fi
 

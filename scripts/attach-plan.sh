@@ -6,16 +6,13 @@
 
 set -e
 
+# Source shared functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/shared-functions.sh"
+
 WORK_ITEM_ID="$1"
 PLAN_FILE="$2"
 ACCESS_TOKEN="$3"
-
-# Defaults from environment or fallback
-ORG="${AZURE_DEVOPS_ORG:-jasonpaffES}"
-PROJECT="${AZURE_DEVOPS_PROJECT:-Head Shakers}"
-
-# URL encode the project name
-PROJECT_ENCODED=$(echo "$PROJECT" | sed 's/ /%20/g')
 
 if [ -z "$WORK_ITEM_ID" ] || [ -z "$PLAN_FILE" ] || [ -z "$ACCESS_TOKEN" ]; then
   echo "Usage: $0 <work-item-id> <plan-file-path> <access-token>"
@@ -27,6 +24,9 @@ if [ ! -f "$PLAN_FILE" ]; then
   exit 1
 fi
 
+# Initialize Azure defaults (sets ORG, PROJECT, API_BASE)
+init_azure_defaults
+
 echo "Attaching plan to work item #$WORK_ITEM_ID..."
 
 # Generate filename with timestamp
@@ -35,7 +35,7 @@ FILENAME="implementation-plan-${TIMESTAMP}.md"
 
 # Step 1: Upload the attachment
 echo "Uploading attachment..."
-UPLOAD_URL="https://dev.azure.com/$ORG/$PROJECT_ENCODED/_apis/wit/attachments?fileName=$FILENAME&api-version=7.0"
+UPLOAD_URL="${API_BASE}/wit/attachments?fileName=$FILENAME&api-version=7.0"
 
 UPLOAD_RESPONSE=$(curl -s -X POST \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
@@ -56,7 +56,7 @@ echo "Attachment uploaded: $ATTACHMENT_URL"
 
 # Step 2: Link attachment to work item
 echo "Linking attachment to work item..."
-LINK_URL="https://dev.azure.com/$ORG/$PROJECT_ENCODED/_apis/wit/workitems/$WORK_ITEM_ID?api-version=7.0"
+LINK_URL="${API_BASE}/wit/workitems/$WORK_ITEM_ID?api-version=7.0"
 
 LINK_PAYLOAD=$(cat <<EOF
 [
@@ -83,8 +83,7 @@ HTTP_STATUS=$(curl -s -w "%{http_code}" -o /tmp/link-response.json \
   -d "$LINK_PAYLOAD" \
   "$LINK_URL")
 
-if [ "$HTTP_STATUS" != "200" ]; then
-  echo "Error: Failed to link attachment to work item. HTTP Status: $HTTP_STATUS"
+if ! validate_http_status "$HTTP_STATUS" "200" "Link attachment to work item"; then
   cat /tmp/link-response.json
   exit 1
 fi
@@ -97,24 +96,25 @@ echo "----------------------------------------"
 
 # Step 3: Add a comment about the plan
 echo "Adding comment to work item..."
-COMMENT_URL="https://dev.azure.com/$ORG/$PROJECT_ENCODED/_apis/wit/workitems/$WORK_ITEM_ID/comments?api-version=7.0-preview.3"
 
 # Generate simple summary from plan
 PLAN_TITLE=$(grep -m1 '^# ' "$PLAN_FILE" | sed 's/^# //' || echo "Implementation Plan")
 PHASE_COUNT=$(grep -c '^## ' "$PLAN_FILE" || echo "0")
 FILE_COUNT=$(grep -oE '\b[a-zA-Z0-9_/-]+\.(ts|tsx|js|jsx|css|sql|json)\b' "$PLAN_FILE" | sort -u | wc -l | tr -d ' ')
 
-COMMENT_PAYLOAD=$(cat <<EOF
-{
-  "text": "IMPLEMENTATION PLAN GENERATED\n\nAn AI-generated implementation plan has been attached to this work item.\n\nSummary:\n- Title: ${PLAN_TITLE}\n- Phases: ${PHASE_COUNT}\n- Files: ~${FILE_COUNT}\n\nNext Steps:\n1. Review the attached plan\n2. If approved, move this item to 'AI Implement' status\n3. If changes needed, update the acceptance criteria and re-run planning"
-}
-EOF
-)
+COMMENT_TEXT="IMPLEMENTATION PLAN GENERATED
 
-curl -s -X POST \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "$COMMENT_PAYLOAD" \
-  "$COMMENT_URL" > /dev/null
+An AI-generated implementation plan has been attached to this work item.
 
-echo "Comment added to work item"
+Summary:
+- Title: ${PLAN_TITLE}
+- Phases: ${PHASE_COUNT}
+- Files: ~${FILE_COUNT}
+
+Next Steps:
+1. Review the attached plan
+2. If approved, move this item to 'AI Implement' status
+3. If changes needed, update the acceptance criteria and re-run planning"
+
+# Use the reusable comment script
+"$SCRIPT_DIR/add-work-item-comment.sh" "$WORK_ITEM_ID" "$COMMENT_TEXT" "$ACCESS_TOKEN"

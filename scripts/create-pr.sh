@@ -6,26 +6,23 @@
 
 set -e
 
+# Source shared functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/shared-functions.sh"
+
 WORK_ITEM_ID="$1"
 BRANCH_NAME="$2"
 WORKFLOW_TYPE="$3"
 GITHUB_TOKEN="$4"
 AZURE_TOKEN="$5"
 
-# GitHub settings
-GITHUB_OWNER="${GITHUB_OWNER:-JasonPaff}"
-GITHUB_REPO="${GITHUB_REPO:-head-shakers}"
-TARGET_BRANCH="${TARGET_BRANCH:-main}"
-
-# Azure DevOps settings (for work item comments)
-ORG="${AZURE_DEVOPS_ORG:-jasonpaffES}"
-PROJECT="${AZURE_DEVOPS_PROJECT:-Head Shakers}"
-PROJECT_ENCODED=$(echo "$PROJECT" | sed 's/ /%20/g')
-
 if [ -z "$WORK_ITEM_ID" ] || [ -z "$BRANCH_NAME" ] || [ -z "$WORKFLOW_TYPE" ] || [ -z "$GITHUB_TOKEN" ]; then
   echo "Usage: $0 <work-item-id> <branch-name> <workflow-type> <github-token> [azure-token]"
   exit 1
 fi
+
+# Initialize defaults
+init_github_defaults
 
 echo "Creating pull request on GitHub..."
 echo "Branch: $BRANCH_NAME -> $TARGET_BRANCH"
@@ -142,8 +139,6 @@ echo "----------------------------------------"
 if [ -n "$AZURE_TOKEN" ]; then
   echo "Adding comment to Azure DevOps work item..."
 
-  COMMENT_URL="https://dev.azure.com/$ORG/$PROJECT_ENCODED/_apis/wit/workitems/$WORK_ITEM_ID/comments?api-version=7.0-preview.3"
-
   COMMENT_TEXT="PULL REQUEST CREATED ON GITHUB
 
 AI pipeline has created a pull request for this work item.
@@ -157,20 +152,9 @@ Next Steps:
 1. Review the pull request on GitHub
 2. Approve and merge when ready"
 
-  COMMENT_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-    -H "Authorization: Bearer $AZURE_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "$(jq -n --arg text "$COMMENT_TEXT" '{text: $text}')" \
-    "$COMMENT_URL")
-
-  COMMENT_STATUS=$(echo "$COMMENT_RESPONSE" | tail -n1)
-
-  if [ "$COMMENT_STATUS" -ge 200 ] && [ "$COMMENT_STATUS" -lt 300 ]; then
-    echo "Comment added to work item"
-  else
-    echo "Warning: Failed to add comment to work item (HTTP $COMMENT_STATUS)"
-    echo "This is non-fatal - PR was created successfully"
-  fi
+  # Use the reusable comment script (non-fatal if it fails)
+  "$SCRIPT_DIR/add-work-item-comment.sh" "$WORK_ITEM_ID" "$COMMENT_TEXT" "$AZURE_TOKEN" || \
+    echo "Warning: Failed to add comment to work item (non-fatal - PR was created successfully)"
 fi
 
 # Output PR number for pipeline use

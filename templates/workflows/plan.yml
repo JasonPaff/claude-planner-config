@@ -23,10 +23,10 @@ steps:
       echo "Full prompt: /plan-feature \"$PLAN_INPUT\""
       echo "Starting Claude Code at: $(date -Iseconds)"
 
-      # Run plan-feature command with stream-json for real-time output
+      # Run plan-feature command (timeout configured in variables.yml)
       chmod +x $(configRepoPath)/scripts/stream-processor.sh
       set +e
-      timeout 1800 claude --output-format stream-json --verbose --dangerously-skip-permissions \
+      timeout $(planTimeout) claude --output-format stream-json --verbose --dangerously-skip-permissions \
         "/plan-feature \"$PLAN_INPUT\"" </dev/null 2>&1 | \
         tee $(Agent.TempDirectory)/raw-stream.jsonl | \
         $(configRepoPath)/scripts/stream-processor.sh | \
@@ -38,7 +38,7 @@ steps:
       echo "Claude exit code: $CLAUDE_EXIT_CODE"
 
       if [ $CLAUDE_EXIT_CODE -eq 124 ]; then
-        echo "##[error]Claude Code timed out after 30 minutes"
+        echo "##[error]Claude Code timed out after $(planTimeout) seconds"
         echo "Last 50 lines of output:"
         tail -50 $(Agent.TempDirectory)/claude-output.txt || true
         exit 1
