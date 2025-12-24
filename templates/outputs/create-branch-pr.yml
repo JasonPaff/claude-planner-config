@@ -85,6 +85,7 @@ steps:
       fi
 
       chmod +x $(configRepoPath)/scripts/create-pr.sh
+      chmod +x $(configRepoPath)/scripts/add-work-item-comment.sh
       $(configRepoPath)/scripts/create-pr.sh \
         "${{ parameters.workItemId }}" \
         "$(BRANCH_NAME)" \
