@@ -4,6 +4,10 @@
 parameters:
   - name: workItemId
     type: string
+  - name: azureDevOpsOrg
+    type: string
+  - name: azureDevOpsProject
+    type: string
 
 steps:
   # Download implementation plan from work item attachment
@@ -49,8 +53,8 @@ steps:
       cp $(Agent.TempDirectory)/implementation-plan.md $(targetRepoPath)/implementation-plan.md
     displayName: 'Download implementation plan'
     env:
-      AZURE_DEVOPS_ORG: $(azureDevOpsOrg)
-      AZURE_DEVOPS_PROJECT: $(azureDevOpsProject)
+      AZURE_DEVOPS_ORG: ${{ parameters.azureDevOpsOrg }}
+      AZURE_DEVOPS_PROJECT: ${{ parameters.azureDevOpsProject }}
 
   # Execute the implementation plan
   - script: |

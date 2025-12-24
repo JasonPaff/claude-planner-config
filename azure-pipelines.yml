@@ -94,6 +94,8 @@ stages:
               - template: templates/workflows/implement.yml
                 parameters:
                   workItemId: ${{ parameters.workItemId }}
+                  azureDevOpsOrg: ${{ parameters.azureDevOpsOrg }}
+                  azureDevOpsProject: ${{ parameters.azureDevOpsProject }}
 
           # ============================================
           # PHASE 5: HANDLE OUTPUTS
