@@ -19,8 +19,19 @@ steps:
       # Fetch attachments from work item
       ATTACHMENTS_URL="${API_BASE}/wit/workitems/${{ parameters.workItemId }}?api-version=7.0&\$expand=relations"
 
-      curl -s -H "Authorization: Bearer $(System.AccessToken)" "$ATTACHMENTS_URL" \
-        > $(Agent.TempDirectory)/work-item-full.json
+      HTTP_STATUS=$(curl -s -w "%{http_code}" -o $(Agent.TempDirectory)/work-item-full.json \
+        -H "Authorization: Bearer $(System.AccessToken)" \
+        "$ATTACHMENTS_URL")
+
+      if ! validate_http_status "$HTTP_STATUS" "200" "Fetch work item with relations"; then
+        echo "Response body:"
+        cat $(Agent.TempDirectory)/work-item-full.json
+        exit 1
+      fi
+
+      if ! validate_json "$(Agent.TempDirectory)/work-item-full.json" "work item response"; then
+        exit 1
+      fi
 
       # Find and download the plan attachment
       PLAN_URL=$(jq -r '.relations[]? | select(.rel == "AttachedFile") | select(.attributes.name | contains("implementation-plan")) | .url' $(Agent.TempDirectory)/work-item-full.json | head -1)
