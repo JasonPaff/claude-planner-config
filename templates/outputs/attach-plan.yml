@@ -12,6 +12,7 @@ parameters:
 steps:
   - script: |
       chmod +x $(configRepoPath)/scripts/attach-plan.sh
+      chmod +x $(configRepoPath)/scripts/add-work-item-comment.sh
       $(configRepoPath)/scripts/attach-plan.sh \
         "${{ parameters.workItemId }}" \
         "$(Agent.TempDirectory)/implementation-plan.md" \
