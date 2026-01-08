@@ -70,7 +70,7 @@ steps:
     echo "Running command at: $(date -u) UTC"
 
     # Debug: verify environment variable is set
-    echo "ANTHROPIC_AUTH_TOKEN set: ${ANTHROPIC_AUTH_TOKEN:0:20}..."
+    echo "CLAUDE_CODE_OAUTH_TOKEN set: ${CLAUDE_CODE_OAUTH_TOKEN:0:20}..."
 
     # Skip onboarding by creating config flag (required for CI)
     # See: https://github.com/anthropics/claude-code/issues/8938
@@ -79,7 +79,7 @@ steps:
     echo "✓ Created ~/.claude.json with hasCompletedOnboarding flag"
 
     # Create credentials file with OAuth token
-    echo "{\"claudeAiOauth\":{\"accessToken\":\"${ANTHROPIC_AUTH_TOKEN}\",\"refreshToken\":\"\",\"expiresAt\":\"2099-12-31T23:59:59.000Z\"}}" > ~/.claude/.credentials.json
+    echo "{\"claudeAiOauth\":{\"accessToken\":\"${CLAUDE_CODE_OAUTH_TOKEN}\",\"refreshToken\":\"\",\"expiresAt\":\"2099-12-31T23:59:59.000Z\"}}" > ~/.claude/.credentials.json
     echo "✓ Created ~/.claude/.credentials.json with OAuth token"
 
     # Run Claude command with timeout (60s should be plenty for a simple response)
@@ -124,7 +124,7 @@ steps:
     echo "Usage window should now be active until $(date -u -d '+5 hours' '+%H:%M UTC')"
   displayName: 'Start Usage Window'
   env:
-    ANTHROPIC_AUTH_TOKEN: $(CLAUDE_CODE)
+    CLAUDE_CODE_OAUTH_TOKEN: $(CLAUDE_CODE)
     CI: 'true'
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
 
