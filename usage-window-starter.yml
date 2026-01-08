@@ -42,8 +42,29 @@ steps:
 
 # Step 3: Run Claude command with OAuth authentication
 - script: |
-    # Export OAuth token as environment variable
-    export CLAUDE_CODE_OAUTH_TOKEN="$(CLAUDE_CODE)"
+    echo "========================================="
+    echo "OAuth Token Validation"
+    echo "========================================="
+
+    # Check if token variable is set
+    if [ -z "$(CLAUDE_CODE)" ]; then
+      echo "##[error]CLAUDE_CODE variable is empty or not set in 'AI' variable group"
+      echo "Please verify the variable exists and contains the OAuth token from 'claude setup-token'"
+      exit 1
+    fi
+
+    # Verify token format (should start with sk-ant-oat01-)
+    if [[ ! "$(CLAUDE_CODE)" =~ ^sk-ant-oat01- ]]; then
+      echo "##[error]CLAUDE_CODE variable does not appear to be a valid OAuth token"
+      echo "Expected format: sk-ant-oat01-..."
+      echo "Actual format: $(echo "$(CLAUDE_CODE)" | head -c 15)..."
+      exit 1
+    fi
+
+    # Show token preview (first 20 chars only for security)
+    TOKEN_PREVIEW=$(echo "$(CLAUDE_CODE)" | head -c 20)
+    echo "✓ OAuth token found: ${TOKEN_PREVIEW}..."
+    echo "✓ Token format validated"
 
     echo "Starting Claude Code usage window..."
     echo "Running command at: $(date -u) UTC"
@@ -67,10 +88,21 @@ steps:
       fi
     elif [ $EXIT_CODE -eq 124 ]; then
       echo "✗ Command timed out after 60 seconds"
-      echo "##vso[task.logissue type=error]Claude command timed out"
+      echo ""
+      echo "Diagnostic information:"
+      echo "- Check if CLAUDE_CODE variable in 'AI' group contains valid token"
+      echo "- Check if token has expired (1-year expiry from creation)"
+      echo "- Verify Azure DevOps agent can reach api.anthropic.com"
+      echo ""
+      echo "Last 30 lines of output:"
+      tail -30 claude-output.txt || true
+      echo "##vso[task.logissue type=error]Claude command timed out - likely authentication failure"
       exit 1
     else
       echo "✗ Claude command failed with exit code: $EXIT_CODE"
+      echo ""
+      echo "Full output:"
+      cat claude-output.txt || true
       echo "##vso[task.logissue type=error]Claude command failed"
       exit $EXIT_CODE
     fi
