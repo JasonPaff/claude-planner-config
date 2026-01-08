@@ -1,0 +1,101 @@
+# Usage Window Starter Pipeline
+#
+# Purpose: Start Claude Code's 5-hour usage window at 7am ET (11:00 UTC) every weekday
+#          by having Claude respond with "OK". This allows the usage window to be active
+#          from 7am-12pm, enabling work from 9am-2pm with a reset at noon.
+#
+# Schedule: Monday-Friday at 11:00 UTC (7am EDT / 6am EST)
+# Authentication: OAuth token from CLAUDE_CODE variable in "AI" variable group
+# Execution time: < 2 minutes
+
+trigger: none  # No CI triggers, only scheduled runs
+
+schedules:
+- cron: "0 11 * * 1-5"  # 11:00 UTC, Monday-Friday
+  displayName: Start usage window at 7am ET
+  branches:
+    include:
+    - main
+  always: true  # Run even if there are no code changes
+
+variables:
+- group: AI  # Contains CLAUDE_CODE OAuth token
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+# Step 1: Install Node.js
+- task: NodeTool@0
+  displayName: 'Install Node.js 20.x'
+  inputs:
+    versionSpec: '20.x'
+
+# Step 2: Install Claude Code CLI
+- script: |
+    echo "Installing Claude Code CLI..."
+    npm install -g @anthropic-ai/claude-code
+
+    echo "Verifying installation..."
+    claude --version
+  displayName: 'Install Claude Code'
+
+# Step 3: Run Claude command with OAuth authentication
+- script: |
+    # Export OAuth token as environment variable
+    export CLAUDE_CODE_OAUTH_TOKEN="$(CLAUDE_CODE)"
+
+    echo "Starting Claude Code usage window..."
+    echo "Running command at: $(date -u) UTC"
+
+    # Run Claude command with timeout
+    timeout 60s claude --dangerously-skip-permissions --verbose "Respond with just the word OK" 2>&1 | tee claude-output.txt
+
+    # Check if command succeeded
+    EXIT_CODE=${PIPESTATUS[0]}
+
+    if [ $EXIT_CODE -eq 0 ]; then
+      echo "✓ Claude Code responded successfully"
+
+      # Validate response contains "OK"
+      if grep -qi "OK" claude-output.txt; then
+        echo "✓ Response validated: Contains 'OK'"
+        echo "##vso[task.complete result=Succeeded;]Usage window started successfully"
+      else
+        echo "⚠ Warning: Response did not contain 'OK'"
+        echo "##vso[task.logissue type=warning]Response validation failed"
+      fi
+    elif [ $EXIT_CODE -eq 124 ]; then
+      echo "✗ Command timed out after 60 seconds"
+      echo "##vso[task.logissue type=error]Claude command timed out"
+      exit 1
+    else
+      echo "✗ Claude command failed with exit code: $EXIT_CODE"
+      echo "##vso[task.logissue type=error]Claude command failed"
+      exit $EXIT_CODE
+    fi
+
+    echo ""
+    echo "Usage window should now be active until $(date -u -d '+5 hours' '+%H:%M UTC')"
+  displayName: 'Start Usage Window'
+  env:
+    CLAUDE_CODE_OAUTH_TOKEN: $(CLAUDE_CODE)
+    CI: 'true'
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
+
+# Step 4: Report pipeline completion
+- script: |
+    echo "========================================="
+    echo "Usage Window Starter - Execution Summary"
+    echo "========================================="
+    echo "Scheduled run time: 11:00 UTC (7am EDT)"
+    echo "Actual run time: $(date -u)"
+    echo "Status: Pipeline completed successfully"
+    echo ""
+    echo "Next steps:"
+    echo "- Usage window is now active for 5 hours"
+    echo "- You can start working at 9am local time"
+    echo "- Window will reset at noon local time"
+    echo "========================================="
+  displayName: 'Pipeline Summary'
+  condition: succeeded()
