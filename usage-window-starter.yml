@@ -79,7 +79,18 @@ steps:
     echo "✓ Created ~/.claude.json with hasCompletedOnboarding flag"
 
     # Create credentials file with OAuth token
-    echo "{\"claudeAiOauth\":{\"accessToken\":\"${CLAUDE_CODE_OAUTH_TOKEN}\",\"refreshToken\":\"${CLAUDE_CODE_OAUTH_TOKEN}\",\"expiresAt\":\"2099-12-31T23:59:59.000Z\"}}" > ~/.claude/.credentials.json
+    cat > ~/.claude/.credentials.json <<EOF
+{
+  "claudeAiOauth": {
+    "accessToken": "${CLAUDE_CODE_OAUTH_TOKEN}",
+    "refreshToken": "${CLAUDE_CODE_OAUTH_TOKEN}",
+    "expiresAt": 9999999999999,
+    "scopes": ["user:inference", "user:profile", "user:sessions:claude_code"],
+    "subscriptionType": "max",
+    "rateLimitTier": "default_claude_max_5x"
+  }
+}
+EOF
     echo "✓ Created ~/.claude/.credentials.json with OAuth token"
 
     # Run Claude command with timeout (60s should be plenty for a simple response)
