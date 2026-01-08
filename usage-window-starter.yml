@@ -70,7 +70,7 @@ steps:
     echo "Running command at: $(date -u) UTC"
 
     # Run Claude command with timeout
-    timeout 60s claude --dangerously-skip-permissions --verbose "Respond with just the word OK" 2>&1 | tee claude-output.txt
+    claude --dangerously-skip-permissions "Respond with just the word OK" 2>&1 | tee claude-output.txt
 
     # Check if command succeeded
     EXIT_CODE=${PIPESTATUS[0]}
