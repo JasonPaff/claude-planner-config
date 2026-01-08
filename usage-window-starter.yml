@@ -70,6 +70,7 @@ steps:
     echo "Running command at: $(date -u) UTC"
 
     # Run Claude command with timeout
+    $env:CLAUDE_CODE_OAUTH_TOKEN=$(CLAUDE_CODE)
     claude -p --dangerously-skip-permissions "Respond with just the word OK" 2>&1 | tee claude-output.txt
 
     # Check if command succeeded
