@@ -5,7 +5,7 @@
 #          from 7am-12pm, enabling work from 9am-2pm with a reset at noon.
 #
 # Schedule: Monday-Friday at 11:00 UTC (7am EDT / 6am EST)
-# Authentication: OAuth token from CLAUDE_CODE variable in "AI" variable group
+# Authentication: OAuth credentials from .credentials.json in Azure DevOps Secure Files
 # Execution time: < 2 minutes
 
 trigger: none  # No CI triggers, only scheduled runs
@@ -18,8 +18,7 @@ schedules:
     - main
   always: true  # Run even if there are no code changes
 
-variables:
-- group: AI  # Contains CLAUDE_CODE OAuth token
+variables: []
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -40,47 +39,32 @@ steps:
     claude --version
   displayName: 'Install Claude Code'
 
-# Step 3: Run Claude command with OAuth authentication
+# Step 3: Download Claude OAuth credentials from Secure Files
+- task: DownloadSecureFile@1
+  name: claudeCredentials
+  inputs:
+    secureFile: '.credentials.json'
+  displayName: 'Download Claude OAuth Credentials'
+
+- script: |
+    echo "Setting up Claude OAuth credentials..."
+    mkdir -p ~/.claude
+    cp $(claudeCredentials.secureFilePath) ~/.claude/.credentials.json
+    chmod 600 ~/.claude/.credentials.json
+    echo "✓ Claude credentials configured at ~/.claude/.credentials.json"
+  displayName: 'Configure Claude OAuth Credentials'
+
+# Step 4: Run Claude command to start usage window
 - script: |
     echo "========================================="
-    echo "OAuth Token Validation"
+    echo "Starting Claude Code Usage Window"
     echo "========================================="
-
-    # Check if token variable is set
-    if [ -z "$(CLAUDE_CODE)" ]; then
-      echo "##[error]CLAUDE_CODE variable is empty or not set in 'AI' variable group"
-      echo "Please verify the variable exists and contains the OAuth token from 'claude setup-token'"
-      exit 1
-    fi
-
-    # Verify token format (should start with sk-ant-oat01-)
-    if [[ ! "$(CLAUDE_CODE)" =~ ^sk-ant-oat01- ]]; then
-      echo "##[error]CLAUDE_CODE variable does not appear to be a valid OAuth token"
-      echo "Expected format: sk-ant-oat01-..."
-      echo "Actual format: $(echo "$(CLAUDE_CODE)" | head -c 15)..."
-      exit 1
-    fi
-
-    # Show token preview (first 20 chars only for security)
-    TOKEN_PREVIEW=$(echo "$(CLAUDE_CODE)" | head -c 20)
-    echo "✓ OAuth token found: ${TOKEN_PREVIEW}..."
-    echo "✓ Token format validated"
-
-    echo "Starting Claude Code usage window..."
     echo "Running command at: $(date -u) UTC"
-
-    # Debug: verify environment variable is set
-    echo "CLAUDE_CODE_OAUTH_TOKEN set: ${CLAUDE_CODE_OAUTH_TOKEN:0:20}..."
 
     # Skip onboarding by creating config flag (required for CI)
     # See: https://github.com/anthropics/claude-code/issues/8938
-    mkdir -p ~/.claude
     echo '{"hasCompletedOnboarding": true}' > ~/.claude.json
     echo "✓ Created ~/.claude.json with hasCompletedOnboarding flag"
-
-    # Create credentials file with OAuth token
-    echo "{\"claudeAiOauth\":{\"accessToken\":\"${CLAUDE_CODE_OAUTH_TOKEN}\",\"refreshToken\":\"${CLAUDE_CODE_OAUTH_TOKEN}\",\"expiresAt\":9999999999999,\"scopes\":[\"user:inference\",\"user:profile\",\"user:sessions:claude_code\"],\"subscriptionType\":\"max\",\"rateLimitTier\":\"default_claude_max_5x\"}}" > ~/.claude/.credentials.json
-    echo "✓ Created ~/.claude/.credentials.json with OAuth token"
 
     # Run Claude command with timeout (60s should be plenty for a simple response)
     timeout 60 claude -p --dangerously-skip-permissions "Respond with just the word OK" 2>&1 | tee claude-output.txt
@@ -103,8 +87,8 @@ steps:
       echo "✗ Command timed out after 60 seconds"
       echo ""
       echo "Diagnostic information:"
-      echo "- Check if CLAUDE_CODE variable in 'AI' group contains valid token"
-      echo "- Check if token has expired (1-year expiry from creation)"
+      echo "- Check if .credentials.json file in Secure Files contains valid tokens"
+      echo "- Check if tokens have expired (1-year expiry from creation)"
       echo "- Verify Azure DevOps agent can reach api.anthropic.com"
       echo ""
       echo "Last 30 lines of output:"
@@ -124,11 +108,10 @@ steps:
     echo "Usage window should now be active until $(date -u -d '+5 hours' '+%H:%M UTC')"
   displayName: 'Start Usage Window'
   env:
-    CLAUDE_CODE_OAUTH_TOKEN: $(CLAUDE_CODE)
     CI: 'true'
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
 
-# Step 4: Report pipeline completion
+# Step 5: Report pipeline completion
 - script: |
     echo "========================================="
     echo "Usage Window Starter - Execution Summary"
